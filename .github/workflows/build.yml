@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [main, claude-notch]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift Version
+        run: swift --version
+
+      - name: Skripte prüfen
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+
+      - name: App bauen (Universal)
+        env:
+          ARCHS: "arm64 x86_64"
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.1.0-dev' }}
+        run: |
+          VERSION="${VERSION#v}" ./scripts/build-app.sh
+          lipo -info "dist/Claude Notch.app/Contents/MacOS/ClaudeNotch"
+          codesign --verify --verbose "dist/Claude Notch.app"
+
+      - name: Zip
+        run: |
+          cd dist
+          ditto -c -k --keepParent "Claude Notch.app" ClaudeNotch.zip
+          shasum -a 256 ClaudeNotch.zip | tee ClaudeNotch.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeNotch
+          path: |
+            dist/ClaudeNotch.zip
+            dist/ClaudeNotch.zip.sha256
+
+      - name: Release veröffentlichen
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/ClaudeNotch.zip dist/ClaudeNotch.zip.sha256 --generate-notes --title "Claude Notch ${GITHUB_REF_NAME}"
