@@ -16,7 +16,7 @@ struct ScreenGeometry: Equatable {
 
     /// Fenstergröße. Das Fenster ist durchsichtig und klickt durch, solange die Maus nicht auf der Anzeige ist.
     var panelSize: CGSize {
-        style == .corner ? CGSize(width: 440, height: 380) : CGSize(width: 680, height: 380)
+        style == .corner ? CGSize(width: 460, height: 380) : CGSize(width: 680, height: 380)
     }
 
     @MainActor
@@ -85,7 +85,7 @@ enum Layout {
 
     static func size(for p: Presentation, model: NotchModel, geometry g: ScreenGeometry) -> CGSize {
         let n = g.notchSize
-        let expandedWidth: CGFloat = g.style == .corner ? 380 : max(n.width + 2 * wing, 440)
+        let expandedWidth: CGFloat = g.style == .corner ? 430 : max(n.width + 2 * wing, 480)
         let top: CGFloat = g.style == .corner ? 0 : n.height
 
         switch p {
