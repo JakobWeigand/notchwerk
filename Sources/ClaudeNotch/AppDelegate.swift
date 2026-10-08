@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ServiceManagement
 import SwiftUI
 
@@ -10,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var server: EventServer?
     private var statusItem: NSStatusItem?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var cancellables: Set<AnyCancellable> = []
 
     static let claudeBundleIDs: Set<String> = ["com.anthropic.claudefordesktop", "com.anthropic.claude"]
 
@@ -145,6 +147,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         item.menu = menu
         statusItem = item
+        item.button?.appearsDisabled = !prefs.enabled
+        prefs.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.statusItem?.button?.appearsDisabled = !self.prefs.enabled
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -172,6 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             mi.toolTip = "Fenster nach vorn holen (\(s.origin.label.isEmpty ? s.cwd : s.origin.label))"
             menu.addItem(mi)
         }
+        menu.addItem(.separator())
+        menu.addItem(item("Einstellungen …", #selector(openSettings), key: ","))
+        menu.addItem(toggle("Anzeige pausieren", !prefs.enabled, #selector(togglePause)))
         menu.addItem(.separator())
 
         if HookInstaller.isInstalled {
@@ -259,6 +274,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func noop() {}
+    @objc private func openSettings() { SettingsWindowController.shared.show() }
+    @objc private func togglePause() { prefs.enabled.toggle() }
     @objc private func playDemo() { model.runDemo() }
     @objc private func toggleRim() { prefs.alwaysShowRim.toggle() }
     @objc private func toggleHover() { prefs.expandOnHover.toggle() }

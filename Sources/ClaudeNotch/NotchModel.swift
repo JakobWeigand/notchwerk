@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 
@@ -15,6 +16,9 @@ struct SessionInfo: Identifiable, Equatable {
     var origin: SessionOrigin = .unknown
     /// Passender Chat in der Claude Desktop App, falls bekannt.
     var desktop: DesktopSession?
+    /// Transkript der Sitzung. Darin steht, wenn du eine Antwort abgebrochen hast.
+    var transcriptPath: String?
+    var transcriptSize: UInt64 = 0
 
     var projectName: String {
         if cwd == FileManager.default.homeDirectoryForCurrentUser.path { return "Home" }
@@ -111,7 +115,22 @@ final class NotchModel: ObservableObject {
     private var settleTasks: [String: Task<Void, Never>] = [:]
     private var lookupsRunning: Set<String> = []
     private var lookupTimes: [String: Date] = [:]
+    private var watchdog: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
     private let prefs = Preferences.shared
+
+    private init() {
+        startWatchdog()
+        // Beim Pausieren offene Anfragen ans Terminal zurückgeben, sonst hängen sie unsichtbar.
+        prefs.$enabled
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in
+                guard !enabled, let self else { return }
+                Task { @MainActor in self.releaseAllRequests() }
+            }
+            .store(in: &cancellables)
+    }
 
     /// Sitzungen, die gerade arbeiten, dich brauchen oder eben fertig wurden. Die, die warten, zuerst.
     var activeSessions: [SessionInfo] {
@@ -135,6 +154,9 @@ final class NotchModel: ObservableObject {
         let cwd = event["cwd"] as? String ?? ""
         var session = sessions[sessionId] ?? SessionInfo(id: sessionId, cwd: cwd)
         if !cwd.isEmpty { session.cwd = cwd }
+        if let transcript = event["transcript_path"] as? String, !transcript.isEmpty {
+            session.transcriptPath = transcript
+        }
         if let chain = event["_notch_origin"] as? String, !chain.isEmpty {
             let origin = SessionOrigin.parse(chain)
             if origin.host != .unknown || session.origin.host == .unknown { session.origin = origin }
@@ -164,7 +186,7 @@ final class NotchModel: ObservableObject {
             sessions[sessionId] = session
 
             if tool == "AskUserQuestion", let questions = QuestionSet(toolInput: input) {
-                if prefs.answerQuestionsInNotch {
+                if prefs.answerQuestionsInNotch && prefs.enabled {
                     session.state = .waiting
                     sessions[sessionId] = session
                     let request = PendingRequest(sessionId: sessionId, project: session.displayName,
@@ -199,7 +221,7 @@ final class NotchModel: ObservableObject {
             session.detail = "Wartet auf Freigabe"
             sessions[sessionId] = session
 
-            guard prefs.answerInNotch else {
+            guard prefs.answerInNotch, prefs.enabled else {
                 reply(nil)
                 enqueueNotice(sessionId: sessionId, project: session.displayName,
                               title: "Freigabe nötig: \(ToolDescriber.displayName(tool))",
@@ -237,6 +259,11 @@ final class NotchModel: ObservableObject {
                     session.detail = "Bereit"
                 }
                 sessions[sessionId] = session
+            case "interrupted_prompt":
+                session.state = .idle
+                session.detail = "Abgebrochen"
+                sessions[sessionId] = session
+                clearNotices(for: sessionId)
             default:
                 if !message.isEmpty {
                     showBanner(Banner(style: .info, title: message, subtitle: session.displayName), duration: 3.5)
@@ -310,6 +337,86 @@ final class NotchModel: ObservableObject {
         SessionFocus.open(session)
     }
 
+    // MARK: - Abbrüche erkennen
+
+    /// Manches meldet kein Hook: ein beendeter Prozess, ein Abbruch mit Esc oder Stopp, eine Sitzung,
+    /// die einfach nichts mehr sagt. Das prüft der Wächter alle drei Sekunden.
+    private func startWatchdog() {
+        watchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                self?.checkSessions()
+            }
+        }
+    }
+
+    private func checkSessions() {
+        let now = Date()
+        for (id, var session) in sessions {
+            if let pid = session.origin.cliPID, !Self.isAlive(pid) {
+                sessions[id] = nil
+                settleTasks[id]?.cancel()
+                settleTasks[id] = nil
+                dropRequests(for: id)
+                continue
+            }
+            guard session.state == .working || session.state == .waiting else { continue }
+            if let path = session.transcriptPath,
+               let result = Self.transcriptStatus(path, lastSize: session.transcriptSize) {
+                session.transcriptSize = result.size
+                if result.interrupted {
+                    session.state = .idle
+                    session.detail = "Abgebrochen"
+                    session.updatedAt = now
+                    sessions[id] = session
+                    clearNotices(for: id)
+                    dropRequests(for: id)
+                    continue
+                }
+                sessions[id] = session
+            }
+            if session.state == .working, now.timeIntervalSince(session.updatedAt) > 15 * 60 {
+                session.state = .idle
+                session.detail = "Keine Rückmeldung"
+                sessions[id] = session
+            }
+        }
+    }
+
+    private nonisolated static func isAlive(_ pid: pid_t) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    /// Liest nur, wenn sich die Datei verändert hat, und nur das Ende. Der Abbruch steht als
+    /// Eintrag „[Request interrupted by user]“ ganz hinten im Transkript.
+    private nonisolated static func transcriptStatus(_ path: String, lastSize: UInt64) -> (size: UInt64, interrupted: Bool)? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = (attrs[.size] as? NSNumber)?.uint64Value, size != lastSize else { return nil }
+        guard let handle = FileHandle(forReadingAtPath: path) else { return (size, false) }
+        defer { try? handle.close() }
+        let tail: UInt64 = 16_384
+        try? handle.seek(toOffset: size > tail ? size - tail : 0)
+        let data = handle.readData(ofLength: Int(tail))
+        guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+            return (size, false)
+        }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        for line in lines.suffix(4).reversed() {
+            if line.contains("[Request interrupted by user") { return (size, true) }
+            if line.contains("\"type\":\"assistant\"") { return (size, false) }
+            if line.contains("\"type\":\"user\""), !line.contains("tool_result") { return (size, false) }
+        }
+        return (size, false)
+    }
+
+    /// Alle offenen Anfragen ans Terminal zurückgeben (beim Pausieren).
+    func releaseAllRequests() {
+        for req in pending {
+            req.respond(.terminal)
+            remove(req.id)
+        }
+    }
+
     // MARK: - Anfragen
 
     private func enqueue(_ request: PendingRequest, onClose: (@escaping () -> Void) -> Void) {
@@ -329,6 +436,7 @@ final class NotchModel: ObservableObject {
     }
 
     private func enqueueNotice(sessionId: String, project: String, title: String, message: String) {
+        guard prefs.enabled else { return }
         pending.removeAll { req in
             if case .notice = req.kind, req.sessionId == sessionId { return true }
             return false
@@ -392,6 +500,7 @@ final class NotchModel: ObservableObject {
     // MARK: - Einblendungen
 
     func showBanner(_ banner: Banner, duration: Double) {
+        guard prefs.enabled else { return }
         bannerTask?.cancel()
         withAnimation(Theme.spring) { self.banner = banner }
         bannerTask = Task { [weak self] in

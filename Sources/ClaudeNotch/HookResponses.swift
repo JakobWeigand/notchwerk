@@ -121,7 +121,7 @@ enum Sounds {
 
     @MainActor
     static func play(_ kind: Kind) {
-        guard Preferences.shared.playSounds else { return }
+        guard Preferences.shared.playSounds, Preferences.shared.enabled else { return }
         let name: String
         switch kind {
         case .attention: name = "Pop"

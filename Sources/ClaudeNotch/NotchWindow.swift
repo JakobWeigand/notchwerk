@@ -6,11 +6,12 @@ import SwiftUI
 final class NotchPanel: NSPanel {
     convenience init(frame: NSRect) {
         self.init(contentRect: frame,
-                   styleMask: [.borderless, .nonactivatingPanel],
-                   backing: .buffered,
-                   defer: false)
+                  styleMask: [.borderless, .nonactivatingPanel],
+                  backing: .buffered,
+                  defer: false)
         isFloatingPanel = true
         level = .screenSaver
+        // canJoinAllSpaces: wandert mit auf jeden Schreibtisch (Space) und über Vollbild-Apps.
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = false
         backgroundColor = .clear
@@ -32,15 +33,18 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// Erstellt pro Bildschirm ein Fenster und kümmert sich um Maus und Bildschirmwechsel.
+/// Erstellt pro Bildschirm ein Fenster und kümmert sich um Maus, Bildschirmwechsel und Verschieben.
 @MainActor
 final class NotchController {
     private struct Entry {
         let panel: NotchPanel
         let state: PanelState
-        let screenID: CGDirectDisplayID
+        let screen: NSScreen
         var insideSince: Date?
         var outsideSince: Date?
+        /// Beim Ziehen des Reiters: Abstand zwischen Mauszeiger und Kachelmitte.
+        var grabOffset: CGPoint?
+        var floatingCenter: CGPoint
     }
 
     private let model: NotchModel
@@ -87,7 +91,7 @@ final class NotchController {
     }
 
     private func layoutKey() -> String {
-        "\(prefs.showOnAllScreens)-\(prefs.placementWithoutNotch.rawValue)"
+        "\(prefs.showOnAllScreens)-\(prefs.placementWithoutNotch.rawValue)-\(prefs.displayMode.rawValue)"
     }
 
     private func rebuildIfLayoutChanged() {
@@ -107,24 +111,38 @@ final class NotchController {
         entries.removeAll()
 
         for screen in targetScreens() {
-            let geometry = ScreenGeometry.make(for: screen, placement: prefs.placementWithoutNotch)
+            let geometry = ScreenGeometry.make(for: screen, placement: prefs.placementWithoutNotch, mode: prefs.displayMode)
             let state = PanelState(geometry: geometry)
-            let panel = NotchPanel(frame: geometry.panelFrame(on: screen))
+            var frame = geometry.panelFrame(on: screen)
+            var center = CGPoint.zero
+            if geometry.style == .floating {
+                let placed = geometry.floatingPlacement(center: prefs.floatingPosition ?? geometry.defaultFloatingCenter(on: screen),
+                                                        on: screen)
+                frame = placed.frame
+                state.anchor = placed.anchor
+                center = placed.center
+            }
+            let panel = NotchPanel(frame: frame)
             let root = NotchRootView(model: model, prefs: prefs, panel: state)
             let host = FirstMouseHostingView(rootView: root)
             host.sizingOptions = []
             host.frame = NSRect(origin: .zero, size: geometry.panelSize)
             panel.contentView = host
-            panel.setFrame(geometry.panelFrame(on: screen), display: true)
+            panel.setFrame(frame, display: true)
             panel.orderFrontRegardless()
-            let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            entries.append(Entry(panel: panel, state: state, screenID: id))
+            let index = entries.count
+            state.onDragMoved = { [weak self] in self?.dragMoved(index) }
+            state.onDragEnded = { [weak self] in self?.dragEnded(index) }
+            entries.append(Entry(panel: panel, state: state, screen: screen, floatingCenter: center))
         }
     }
 
     private func targetScreens() -> [NSScreen] {
         let screens = NSScreen.screens
         if prefs.showOnAllScreens { return screens }
+        if prefs.displayMode == .floating {
+            return NSScreen.main.map { [$0] } ?? screens.first.map { [$0] } ?? []
+        }
         // MacBook offen: Bildschirm mit Notch. Zugeklappt: Hauptbildschirm (der mit der Menüleiste).
         if let notched = screens.first(where: { screen in
             if #available(macOS 12.0, *) { return screen.safeAreaInsets.top > 0 }
@@ -139,6 +157,32 @@ final class NotchController {
         for e in entries { e.panel.orderFrontRegardless() }
     }
 
+    // MARK: - Reiter verschieben
+
+    private func dragMoved(_ index: Int) {
+        guard entries.indices.contains(index) else { return }
+        let mouse = NSEvent.mouseLocation
+        if entries[index].grabOffset == nil {
+            let c = entries[index].floatingCenter
+            entries[index].grabOffset = CGPoint(x: c.x - mouse.x, y: c.y - mouse.y)
+        }
+        let offset = entries[index].grabOffset ?? .zero
+        let target = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
+        let e = entries[index]
+        let placed = e.state.geometry.floatingPlacement(center: target, on: e.screen)
+        entries[index].floatingCenter = placed.center
+        if e.state.anchor != placed.anchor { e.state.anchor = placed.anchor }
+        e.panel.setFrame(placed.frame, display: true)
+    }
+
+    private func dragEnded(_ index: Int) {
+        guard entries.indices.contains(index) else { return }
+        entries[index].grabOffset = nil
+        prefs.floatingPosition = entries[index].floatingCenter
+    }
+
+    // MARK: - Maus
+
     /// Das Fenster nimmt nur Klicks an, wenn die Maus wirklich auf der Anzeige ist.
     private func trackMouse() {
         let mouse = NSEvent.mouseLocation
@@ -146,7 +190,7 @@ final class NotchController {
         for i in entries.indices {
             let e = entries[i]
             let rect = interactiveRect(for: e)
-            let inside = !rect.isEmpty && rect.insetBy(dx: -4, dy: -4).contains(mouse)
+            let inside = (!rect.isEmpty && rect.insetBy(dx: -4, dy: -4).contains(mouse)) || e.grabOffset != nil
             if e.panel.ignoresMouseEvents == inside {
                 e.panel.ignoresMouseEvents = !inside
             }
@@ -176,7 +220,7 @@ final class NotchController {
                                     hovering: e.state.hovering, pinned: e.state.pinned)
         var size = Layout.size(for: p, model: model, prefs: prefs, geometry: g)
         // Im Ruhezustand reicht der Notch selbst als Fläche zum Überfahren.
-        if size == .zero, g.style != .corner { size = g.notchSize }
+        if size == .zero, !g.isTile { size = g.notchSize }
         let frame = e.panel.frame
         switch g.style {
         case .notch, .pill:
@@ -184,6 +228,11 @@ final class NotchController {
                           width: size.width, height: size.height)
         case .corner:
             return NSRect(x: frame.maxX - size.width, y: frame.maxY - size.height,
+                          width: size.width, height: size.height)
+        case .floating:
+            let a = e.state.anchor
+            return NSRect(x: a.trailing ? frame.maxX - size.width : frame.minX,
+                          y: a.flipped ? frame.minY : frame.maxY - size.height,
                           width: size.width, height: size.height)
         }
     }

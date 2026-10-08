@@ -16,6 +16,18 @@ final class Preferences: ObservableObject {
         }
     }
 
+    enum DisplayMode: String, CaseIterable {
+        case notch     // am Notch (oder oben rechts/mittig ohne Notch)
+        case floating  // kleiner schwebender Reiter, frei verschiebbar
+
+        var title: String {
+            switch self {
+            case .notch: return "Am Notch"
+            case .floating: return "Schwebender Reiter (frei verschiebbar)"
+            }
+        }
+    }
+
     /// Auswahl für den Abstand unter dem Notch. 1 mm sind auf einem MacBook-Display etwa 5 Punkte.
     static let extensionChoices: [(title: String, value: Double)] = [
         ("Keiner", 0),
@@ -27,6 +39,13 @@ final class Preferences: ObservableObject {
 
     private let defaults = UserDefaults.standard
 
+    /// Aus = Anzeige pausiert: nichts wird gezeigt, Freigaben und Fragen laufen wie gewohnt im Terminal.
+    @Published var enabled: Bool { didSet { defaults.set(enabled, forKey: "enabled") } }
+    /// Am Notch oder als schwebender Reiter.
+    @Published var displayMode: DisplayMode { didSet { defaults.set(displayMode.rawValue, forKey: "displayMode") } }
+    /// Mitte des schwebenden Reiters in Bildschirmpunkten (-1 = noch nie verschoben).
+    @Published var floatingX: Double { didSet { defaults.set(floatingX, forKey: "floatingX") } }
+    @Published var floatingY: Double { didSet { defaults.set(floatingY, forKey: "floatingY") } }
     /// Orangener Rand um den Notch auch im Ruhezustand.
     @Published var alwaysShowRim: Bool { didSet { defaults.set(alwaysShowRim, forKey: "alwaysShowRim") } }
     /// Position auf Bildschirmen ohne Notch (z.B. externer Monitor bei zugeklapptem MacBook).
@@ -56,6 +75,10 @@ final class Preferences: ObservableObject {
 
     private init() {
         defaults.register(defaults: [
+            "enabled": true,
+            "displayMode": DisplayMode.notch.rawValue,
+            "floatingX": -1.0,
+            "floatingY": -1.0,
             "alwaysShowRim": true,
             "placementWithoutNotch": Placement.topRight.rawValue,
             "showOnAllScreens": false,
@@ -70,6 +93,10 @@ final class Preferences: ObservableObject {
             "compactRows": 2,
             "showUsage": true,
         ])
+        enabled = defaults.bool(forKey: "enabled")
+        displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .notch
+        floatingX = defaults.double(forKey: "floatingX")
+        floatingY = defaults.double(forKey: "floatingY")
         alwaysShowRim = defaults.bool(forKey: "alwaysShowRim")
         placementWithoutNotch = Placement(rawValue: defaults.string(forKey: "placementWithoutNotch") ?? "") ?? .topRight
         showOnAllScreens = defaults.bool(forKey: "showOnAllScreens")
@@ -83,5 +110,16 @@ final class Preferences: ObservableObject {
         showSessionsInNotch = defaults.bool(forKey: "showSessionsInNotch")
         compactRows = min(max(defaults.integer(forKey: "compactRows"), 1), 3)
         showUsage = defaults.bool(forKey: "showUsage")
+    }
+}
+
+extension Preferences {
+    /// Gespeicherte Position des schwebenden Reiters, falls er schon einmal verschoben wurde.
+    var floatingPosition: CGPoint? {
+        get { floatingX < 0 || floatingY < 0 ? nil : CGPoint(x: floatingX, y: floatingY) }
+        set {
+            floatingX = newValue.map { Double($0.x) } ?? -1
+            floatingY = newValue.map { Double($0.y) } ?? -1
+        }
     }
 }

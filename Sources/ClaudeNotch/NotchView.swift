@@ -7,6 +7,11 @@ final class PanelState: ObservableObject {
     /// Per Klick aufgeklappt. Schließt sich wieder, wenn die Maus eine Weile weg ist.
     @Published var pinned = false
     @Published var geometry: ScreenGeometry
+    /// Ecke, an der die Kachel hängt, und Richtung, in die der Inhalt aufklappt (schwebender Reiter).
+    @Published var anchor: Anchor = .topTrailing
+    /// Der Reiter wird gezogen: der Controller verschiebt das Fenster unter der Maus mit.
+    var onDragMoved: (() -> Void)?
+    var onDragEnded: (() -> Void)?
 
     init(geometry: ScreenGeometry) {
         self.geometry = geometry
@@ -24,16 +29,19 @@ struct NotchRootView: View {
                                     hovering: panel.hovering, pinned: panel.pinned)
         let size = Layout.size(for: p, model: model, prefs: prefs, geometry: g)
 
-        ZStack(alignment: g.style == .corner ? .topTrailing : .top) {
+        let anchor: Anchor = g.style == .floating ? panel.anchor : .topTrailing
+        let alignment: Alignment = g.isTile ? anchor.alignment : .top
+
+        ZStack(alignment: alignment) {
             Color.clear
-            NotchBody(model: model, prefs: prefs, presentation: p, geometry: g, pinned: panel.pinned) {
-                togglePinned(p)
-            }
+            NotchBody(model: model, prefs: prefs, presentation: p, geometry: g, pinned: panel.pinned, anchor: anchor,
+                      onTap: { togglePinned(p) },
+                      onDragMoved: { panel.onDragMoved?() },
+                      onDragEnded: { panel.onDragEnded?() })
             .frame(width: size.width, height: size.height)
-            .opacity(p == .hidden && g.style == .corner ? 0 : 1)
+            .opacity(p == .hidden && g.isTile ? 0 : 1)
         }
-        .frame(width: g.panelSize.width, height: g.panelSize.height,
-               alignment: g.style == .corner ? .topTrailing : .top)
+        .frame(width: g.panelSize.width, height: g.panelSize.height, alignment: alignment)
         .animation(Theme.spring, value: p)
         .animation(Theme.spring, value: size)
     }
@@ -55,9 +63,12 @@ private struct NotchBody: View {
     let presentation: Presentation
     let geometry: ScreenGeometry
     let pinned: Bool
+    let anchor: Anchor
     let onTap: () -> Void
+    let onDragMoved: () -> Void
+    let onDragEnded: () -> Void
 
-    private var corner: Bool { geometry.style == .corner }
+    private var corner: Bool { geometry.isTile }
     private var expanded: Bool { presentation.isExpanded }
     private var showsRows: Bool { Layout.showsRows(presentation, model: model, prefs: prefs) }
     private var open: Bool { expanded || showsRows }
@@ -69,13 +80,20 @@ private struct NotchBody: View {
     private var ext: CGFloat { corner ? 0 : CGFloat(prefs.notchExtension) }
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack(alignment: anchor.flipped ? .bottom : .top) {
             background
             content
                 .clipShape(clipShape)
         }
         .contentShape(fillShape)
         .onTapGesture(perform: onTap)
+    }
+
+    /// Ziehen am Reiter verschiebt das Fenster. Ein Klick ohne Bewegung bleibt ein Klick.
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .onChanged { _ in onDragMoved() }
+            .onEnded { _ in onDragEnded() }
     }
 
     // MARK: Hintergrund und Rand
@@ -123,15 +141,10 @@ private struct NotchBody: View {
         let side: CGFloat = corner ? 14 : topRadius + 16
 
         VStack(spacing: 0) {
-            if corner {
-                cornerHeader
-                    .frame(height: Layout.cornerHeader)
+            if anchor.flipped {
+                Spacer(minLength: 0)
             } else {
-                wings
-                    .frame(height: geometry.notchSize.height)
-                if ext > 0 {
-                    Color.clear.frame(height: ext)
-                }
+                headerArea
             }
             if showsRows {
                 CompactRowsView(model: model, rows: prefs.compactRows)
@@ -148,7 +161,30 @@ private struct NotchBody: View {
                         insertion: .opacity.combined(with: .scale(scale: 0.92, anchor: .top)).animation(Theme.spring.delay(0.06)),
                         removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
-            Spacer(minLength: 0)
+            if anchor.flipped {
+                headerArea
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// Kopfbereich: am Notch die Flügel neben der Kamera, sonst die Kachel mit dem Funken.
+    @ViewBuilder
+    private var headerArea: some View {
+        if corner {
+            let header = cornerHeader.frame(height: Layout.cornerHeader)
+            if geometry.style == .floating {
+                header.gesture(dragGesture)
+            } else {
+                header
+            }
+        } else {
+            wings
+                .frame(height: geometry.notchSize.height)
+            if ext > 0 {
+                Color.clear.frame(height: ext)
+            }
         }
     }
 
@@ -314,6 +350,18 @@ private struct SessionListView: View {
         let visible = Layout.listRows(active: active.count, max: rows)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
+                Button {
+                    SettingsWindowController.shared.show()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Einstellungen")
                 Text("Claude")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.orange)

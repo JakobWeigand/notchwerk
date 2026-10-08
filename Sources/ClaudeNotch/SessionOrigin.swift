@@ -23,6 +23,8 @@ struct SessionOrigin: Equatable {
     var appPID: pid_t?
     /// Terminal-Gerät der Sitzung, z.B. "/dev/ttys003". Damit findet man den richtigen Tab.
     var tty: String?
+    /// PID des Claude Code Prozesses selbst. Ist er weg, ist die Sitzung weg.
+    var cliPID: pid_t?
 
     static let unknown = SessionOrigin()
 
@@ -49,6 +51,8 @@ struct SessionOrigin: Equatable {
         }
 
         var origin = SessionOrigin()
+        let shells: Set<String> = ["sh", "bash", "zsh", "-sh", "-bash", "-zsh", "fish", "login", "dash"]
+        origin.cliPID = entries.first(where: { !shells.contains(($0.comm as NSString).lastPathComponent) })?.pid
         if let tty = entries.first(where: { $0.tty != "??" && !$0.tty.isEmpty })?.tty {
             origin.tty = tty.hasPrefix("/dev/") ? tty : "/dev/" + tty
         }

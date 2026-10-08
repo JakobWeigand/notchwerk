@@ -28,7 +28,10 @@ Weitere Punkte
 * Die Liste erscheint beim Überfahren des Notch (oben rechts per Klick auf den Funken) und verschwindet, sobald die Maus wieder weg ist. Bis zu zwei Zeilen sind sofort zu sehen, bei mehr lässt sich scrollen. Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
 * Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt.
 * Der Abstand des orangenen Rands unter dem Notch ist einstellbar (Standard 1 mm), damit der echte Notch nicht hervorschaut.
-* Alles einstellbar über das ✦ Symbol in der Menüleiste. Dort stehen auch die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude.
+* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad oben links in der aufgeklappten Liste oder über das ✦ Symbol in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Claude Notch eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
+* **Schwebender Reiter** statt Notch: In den Einstellungen unter „Anzeigeart“ wählbar. Der kleine Funke lässt sich mit der Maus an eine beliebige Stelle ziehen, bleibt im Vordergrund, wandert auf jeden Schreibtisch mit und öffnet die Liste beim Überfahren. Praktisch, wenn der Notch beim Surfen zu leicht ausgelöst wird.
+* Abgebrochene Sitzungen (Esc, Stopp, Fenster zu) verschwinden von selbst: Die App merkt, wenn der Claude Code Prozess weg ist oder im Transkript „[Request interrupted by user]“ steht.
+* Im ✦ Menü stehen die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude.
 * Wenn die App nicht läuft, merkt Claude Code nichts davon und fragt ganz normal im Terminal.
 
 ## Schnellstart ohne Kompilieren
@@ -120,6 +123,7 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk swift build
 Der Code liegt in `Sources/ClaudeNotch`
 
 * `NotchView.swift` Aussehen und Animationen
+* `SettingsWindow.swift` das Einstellungsfenster
 * `NotchModel.swift` Zustände und Verarbeitung der Claude Code Ereignisse
 * `NotchWindow.swift` Fenster über allem, Bildschirmerkennung, Maus
 * `Geometry.swift` Größen und welcher Zustand gerade gezeigt wird
