@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Als Download-Version (Release) veröffentlichen"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,7 +30,7 @@ jobs:
       - name: App bauen (Universal)
         env:
           ARCHS: "arm64 x86_64"
-          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.1.0-dev' }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || (inputs.release && format('0.1.{0}', github.run_number)) || '0.1.0-dev' }}
         run: |
           VERSION="${VERSION#v}" ./scripts/build-app.sh
           lipo -info "dist/Claude Notch.app/Contents/MacOS/ClaudeNotch"
@@ -45,7 +50,14 @@ jobs:
             dist/ClaudeNotch.zip.sha256
 
       - name: Release veröffentlichen
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/ClaudeNotch.zip dist/ClaudeNotch.zip.sha256 --generate-notes --title "Claude Notch ${GITHUB_REF_NAME}"
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v0.1.${GITHUB_RUN_NUMBER}"
+          fi
+          gh release create "$TAG" dist/ClaudeNotch.zip dist/ClaudeNotch.zip.sha256 \
+            --target "$GITHUB_SHA" --generate-notes --title "Claude Notch $TAG"
