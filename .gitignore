@@ -5,3 +5,9 @@ dist/
 .swiftpm/
 .DS_Store
 .build*/
+# Niemals Geheimnisse einchecken
+.env
+.env.*
+*.pem
+*.p12
+*.key

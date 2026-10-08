@@ -1,7 +1,7 @@
 #!/bin/bash
-# Entfernt Claude Notch, die Hooks in ~/.claude/settings.json und ~/.claude-notch.
+# Entfernt Notchwerk, die Hooks in ~/.claude/settings.json und ~/.claude-notch.
 set -euo pipefail
-pkill -x ClaudeNotch >/dev/null 2>&1 || true
+pkill -x Notchwerk; pkill -x ClaudeNotch >/dev/null 2>&1 || true
 
 SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS" ] && grep -q ".claude-notch/hook.sh" "$SETTINGS"; then
@@ -24,6 +24,6 @@ JXA
 fi
 
 rm -rf "$HOME/.claude-notch"
-rm -rf "/Applications/Claude Notch.app"
+rm -rf "/Applications/Notchwerk.app" "/Applications/Claude Notch.app"
 defaults delete io.github.jakobweigand.claude-notch >/dev/null 2>&1 || true
-echo "✓ Claude Notch entfernt"
+echo "✓ Notchwerk entfernt"

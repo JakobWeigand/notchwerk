@@ -30,7 +30,7 @@ final class EventServer {
                 DispatchQueue.main.async { onReady(port) }
             }
             if case .failed(let error) = state {
-                NSLog("ClaudeNotch: Server-Fehler \(error)")
+                NSLog("Notchwerk: Server-Fehler \(error)")
             }
         }
         listener.start(queue: queue)

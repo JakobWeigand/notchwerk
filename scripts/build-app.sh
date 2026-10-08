@@ -1,5 +1,5 @@
 #!/bin/bash
-# Baut "Claude Notch.app" in den Ordner dist/.
+# Baut "Notchwerk.app" in den Ordner dist/.
 # Voraussetzung: Xcode oder die Command Line Tools (xcode-select --install). Beides ist kostenlos.
 #
 #   ./scripts/build-app.sh                       # für deinen Mac
@@ -7,12 +7,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.2.1}"
+VERSION="${VERSION:-0.3.0}"
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 ARGS=(-c release)
 for arch in ${ARCHS:-}; do ARGS+=(--arch "$arch"); done
 
-echo "▸ Baue Claude Notch $VERSION …"
+echo "▸ Baue Notchwerk $VERSION …"
 if ! swift build "${ARGS[@]}"; then
   # Nur Command Line Tools, kein Xcode: Das neueste SDK verlangt ein SwiftUI-Makro-Plugin,
   # das erst Xcode mitbringt. Mit dem vorherigen SDK klappt es.
@@ -26,12 +26,12 @@ if ! swift build "${ARGS[@]}"; then
   done
   [ -n "${SDKROOT:-}" ] || { echo "✗ Build fehlgeschlagen"; exit 1; }
 fi
-BIN="$(swift build "${ARGS[@]}" --show-bin-path)/ClaudeNotch"
+BIN="$(swift build "${ARGS[@]}" --show-bin-path)/Notchwerk"
 
-APP="dist/Claude Notch.app"
+APP="dist/Notchwerk.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/ClaudeNotch"
+cp "$BIN" "$APP/Contents/MacOS/Notchwerk"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
 
 if command -v iconutil >/dev/null 2>&1; then

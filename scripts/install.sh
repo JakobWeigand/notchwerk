@@ -12,12 +12,14 @@ fi
 
 ./scripts/build-app.sh
 
-TARGET="/Applications/Claude Notch.app"
-osascript -e 'tell application "Claude Notch" to quit' >/dev/null 2>&1 || true
+TARGET="/Applications/Notchwerk.app"
+osascript -e 'tell application "Notchwerk" to quit' >/dev/null 2>&1 || true
+pkill -x Notchwerk >/dev/null 2>&1 || true
 pkill -x ClaudeNotch >/dev/null 2>&1 || true
+rm -rf "/Applications/Claude Notch.app"
 sleep 0.5
 rm -rf "$TARGET"
-cp -R "dist/Claude Notch.app" "$TARGET"
+cp -R "dist/Notchwerk.app" "$TARGET"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
 open "$TARGET"
-echo "✓ Claude Notch läuft. Das ✦ Symbol findest du in der Menüleiste."
+echo "✓ Notchwerk läuft. Das ✦ Symbol findest du in der Menüleiste."

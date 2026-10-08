@@ -36,7 +36,7 @@ struct UsageSnapshot: Equatable {
 
 /// Liest den Anmelde-Token von Claude Code. Der liegt im Schlüsselbund unter
 /// „Claude Code-credentials“ (bei älteren Versionen in ~/.claude/.credentials.json).
-/// Beim ersten Zugriff fragt macOS, ob Claude Notch den Eintrag lesen darf.
+/// Beim ersten Zugriff fragt macOS, ob Notchwerk den Eintrag lesen darf.
 enum ClaudeCredentials {
     struct Token {
         let accessToken: String
@@ -195,7 +195,7 @@ final class UsageMonitor: ObservableObject {
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        request.setValue("claude-notch/\(version)", forHTTPHeaderField: "User-Agent")
+        request.setValue("notchwerk/\(version)", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw FetchError.failed("keine Antwort") }

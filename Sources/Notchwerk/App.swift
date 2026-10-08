@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-enum ClaudeNotchApp {
+enum NotchwerkApp {
     @MainActor private static var delegate: AppDelegate?
 
     @MainActor

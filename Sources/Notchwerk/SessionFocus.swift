@@ -59,8 +59,10 @@ enum SessionFocus {
     }
 
     /// Terminal.app und iTerm2 kennen das tty jedes Tabs. Darüber finden wir den richtigen Tab.
-    /// Beim ersten Mal fragt macOS, ob Claude Notch das Terminal steuern darf.
+    /// Beim ersten Mal fragt macOS, ob Notchwerk das Terminal steuern darf.
     private static func selectTerminalTab(appName: String, tty: String) -> Bool {
+        // Nur echte Gerätenamen ins Skript lassen, nichts anderes darf in den AppleScript-Text.
+        guard tty.range(of: #"^/dev/tty[A-Za-z0-9.]{1,32}$"#, options: .regularExpression) != nil else { return false }
         let source: String
         switch appName.lowercased() {
         case "terminal":
@@ -103,7 +105,7 @@ enum SessionFocus {
         }
         var error: NSDictionary?
         guard let result = NSAppleScript(source: source)?.executeAndReturnError(&error) else {
-            if let error { NSLog("ClaudeNotch: Terminal-Tab nicht gefunden: \(error)") }
+            if let error { NSLog("Notchwerk: Terminal-Tab nicht gefunden: \(error)") }
             return false
         }
         return result.booleanValue

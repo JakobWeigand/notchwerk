@@ -91,7 +91,7 @@ final class Preferences: ObservableObject {
             "notchExtension": 5.0,
             "showSessionsInNotch": false,
             "compactRows": 2,
-            "showUsage": true,
+            "showUsage": false,
         ])
         enabled = defaults.bool(forKey: "enabled")
         displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .notch

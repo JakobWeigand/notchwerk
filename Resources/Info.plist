@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Claude Notch</string>
+    <string>Notchwerk</string>
     <key>CFBundleDisplayName</key>
-    <string>Claude Notch</string>
+    <string>Notchwerk</string>
     <key>CFBundleIdentifier</key>
     <string>io.github.jakobweigand.claude-notch</string>
     <key>CFBundleExecutable</key>
-    <string>ClaudeNotch</string>
+    <string>Notchwerk</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -25,8 +25,8 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Claude Notch holt auf Klick den Terminal-Tab nach vorn, in dem eine Claude Code Sitzung läuft.</string>
+    <string>Notchwerk holt auf Klick den Terminal-Tab nach vorn, in dem eine Claude Code Sitzung läuft.</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Inoffizielles Hobbyprojekt. Nicht von Anthropic.</string>
+    <string>Inoffizielles Hobbyprojekt, nicht von Anthropic. Claude ist eine Marke von Anthropic, PBC.</string>
 </dict>
 </plist>

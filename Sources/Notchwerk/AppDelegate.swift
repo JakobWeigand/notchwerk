@@ -22,12 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
         watchClaudeApp()
 
-        // Beim allerersten Start automatisch beim Anmelden starten, damit die App immer da ist.
-        if !UserDefaults.standard.bool(forKey: "didFirstLaunch") {
-            UserDefaults.standard.set(true, forKey: "didFirstLaunch")
-            try? SMAppService.mainApp.register()
-        }
-
         if !HookInstaller.isInstalled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
                 Task { @MainActor in self?.offerHookInstall() }
@@ -59,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self.server = server
         } catch {
-            NSLog("ClaudeNotch: Server konnte nicht starten: \(error)")
+            NSLog("Notchwerk: Server konnte nicht starten: \(error)")
         }
     }
 
@@ -96,9 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.messageText = "Mit Claude Code verbinden?"
         alert.informativeText = """
-        Claude Notch trägt dafür einen Hook in ~/.claude/settings.json ein. Vorher wird eine Sicherheitskopie angelegt.
+        Notchwerk trägt dafür einen Hook in ~/.claude/settings.json ein. Vorher wird eine Sicherheitskopie angelegt.
 
         Alles bleibt lokal auf deinem Mac. Die App lauscht nur auf 127.0.0.1 und prüft bei jeder Nachricht einen geheimen Token.
+
+        Die App startet danach automatisch beim Anmelden. Das lässt sich im Menü jederzeit abschalten.
         """
         alert.addButton(withTitle: "Verbinden")
         alert.addButton(withTitle: "Später")
@@ -111,6 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func installHooks() {
         do {
             try HookInstaller.install()
+            // Erst jetzt, mit Zustimmung, als Anmeldeobjekt eintragen.
+            try? SMAppService.mainApp.register()
             model.showBanner(Banner(style: .greeting, title: "Mit Claude Code verbunden",
                                     subtitle: "Neue Claude Code Sitzungen melden sich jetzt hier."), duration: 3.5)
         } catch {
@@ -139,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Claude Notch")
+            let image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Notchwerk")
             image?.isTemplate = true
             button.image = image
         }
@@ -162,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let header = NSMenuItem(title: "Claude Notch", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: "Notchwerk", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
         let count = model.sessions.count
@@ -257,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(toggle("Beim Anmelden starten", SMAppService.mainApp.status == .enabled, #selector(toggleLogin)))
         menu.addItem(item("Ordner ~/.claude-notch öffnen", #selector(openFolder)))
         menu.addItem(.separator())
-        menu.addItem(item("Claude Notch beenden", #selector(quit), key: "q"))
+        menu.addItem(item("Notchwerk beenden", #selector(quit), key: "q"))
     }
 
     private func item(_ title: String, _ action: Selector, key: String = "", enabled: Bool = true) -> NSMenuItem {

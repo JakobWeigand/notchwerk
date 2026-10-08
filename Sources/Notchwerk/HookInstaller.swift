@@ -30,7 +30,7 @@ enum HookInstaller {
 
     static let script = """
     #!/bin/bash
-    # Claude Notch Hook (Version 2): leitet Claude Code Ereignisse an die Notch App weiter.
+    # Notchwerk Hook (Version 2): leitet Claude Code Ereignisse an die Notch App weiter.
     # Läuft die App nicht, passiert nichts und Claude Code arbeitet ganz normal weiter.
     DIR="$HOME/.claude-notch"
     MAX="${1:-2}"
@@ -70,7 +70,7 @@ enum HookInstaller {
             // Skript aktuell halten, falls die App aktualisiert wurde.
             if fm.fileExists(atPath: scriptURL.path) { try writeScript() }
         } catch {
-            NSLog("ClaudeNotch: Konnte Laufzeitdateien nicht schreiben: \(error)")
+            NSLog("Notchwerk: Konnte Laufzeitdateien nicht schreiben: \(error)")
         }
     }
 

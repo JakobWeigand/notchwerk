@@ -13,7 +13,7 @@ final class SettingsWindowController {
         if window == nil {
             let host = NSHostingController(rootView: SettingsView(prefs: Preferences.shared, model: NotchModel.shared))
             let w = NSWindow(contentViewController: host)
-            w.title = "Claude Notch"
+            w.title = "Notchwerk"
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.isReleasedWhenClosed = false
             w.setContentSize(NSSize(width: 480, height: 620))
@@ -37,7 +37,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Claude Notch eingeschaltet", isOn: $prefs.enabled)
+                Toggle("Notchwerk eingeschaltet", isOn: $prefs.enabled)
                 Text(prefs.enabled
                      ? "Ausschalten pausiert die Anzeige. Claude Code fragt dann wie gewohnt im Terminal, die Verbindung bleibt bestehen."
                      : "Pausiert. Nichts wird angezeigt, Claude Code fragt wie gewohnt im Terminal.")
@@ -73,7 +73,7 @@ struct SettingsView: View {
                     ForEach(1...3, id: \.self) { Text("\($0)").tag($0) }
                 }
                 Toggle("Nutzung (Sitzungs- und Wochenlimit) zeigen", isOn: $prefs.showUsage)
-                Text("Für die Nutzung liest die App den Claude Code Login aus dem Schlüsselbund und fragt die Limits bei api.anthropic.com ab, so wie /usage in Claude Code. Das kostet nichts und zählt nicht gegen die Limits.")
+                Text("Für die Nutzung liest die App den Claude Code Login aus dem Schlüsselbund und fragt nur die Limits bei api.anthropic.com ab, so wie /usage in Claude Code. Das kostet nichts und zählt nicht gegen die Limits. Hinweis: Anthropic sieht den Login-Token laut Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, deshalb ist sie standardmäßig aus und auf eigene Verantwortung.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

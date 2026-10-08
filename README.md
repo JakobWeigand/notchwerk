@@ -1,12 +1,14 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="Claude Notch Icon"></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="Notchwerk Icon"></p>
 
-<h1 align="center">Claude Notch</h1>
+<h1 align="center">Notchwerk</h1>
+
+<p align="center"><em>für Claude Code</em></p>
 
 <p align="center">Ein orangener Rand um den Notch deines MacBooks, der aufklappt sobald Claude dich braucht.</p>
 
-Claude Notch ist eine kleine, kostenlose Mac App für die Menüleiste. Sie zeigt dir am Notch (oder oben rechts auf einem externen Bildschirm) was Claude Code gerade macht. Wenn Claude eine Freigabe braucht oder eine Frage hat, klappt der Notch mit einer Animation auf und du kannst direkt dort antworten. Das funktioniert auch über Vollbild-Apps und Filmen.
+Notchwerk ist eine kleine, kostenlose Mac App für die Menüleiste. Sie zeigt dir am Notch (oder oben rechts auf einem externen Bildschirm) was Claude Code gerade macht. Wenn Claude eine Freigabe braucht oder eine Frage hat, klappt der Notch mit einer Animation auf und du kannst direkt dort antworten. Das funktioniert auch über Vollbild-Apps und Filmen.
 
-> Inoffizielles Hobbyprojekt. Nicht von Anthropic und nicht mit Anthropic verbunden.
+> Inoffizielles Hobbyprojekt. Nicht von Anthropic und nicht mit Anthropic verbunden. „Claude“ und „Claude Code“ sind Marken von Anthropic, PBC und werden hier nur beschreibend genannt, weil die App mit Claude Code zusammenarbeitet. Lizenz: MIT, ohne Gewähr (siehe `LICENSE`).
 
 ## Was die App kann
 
@@ -28,7 +30,7 @@ Weitere Punkte
 * Die Liste erscheint beim Überfahren des Notch (oben rechts per Klick auf den Funken) und verschwindet, sobald die Maus wieder weg ist. Bis zu zwei Zeilen sind sofort zu sehen, bei mehr lässt sich scrollen. Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
 * Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt.
 * Der Abstand des orangenen Rands unter dem Notch ist einstellbar (Standard 1 mm), damit der echte Notch nicht hervorschaut.
-* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad oben links in der aufgeklappten Liste oder über das ✦ Symbol in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Claude Notch eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
+* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad oben links in der aufgeklappten Liste oder über das ✦ Symbol in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Notchwerk eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
 * **Schwebender Reiter** statt Notch: In den Einstellungen unter „Anzeigeart“ wählbar. Der kleine Funke lässt sich mit der Maus an eine beliebige Stelle ziehen, bleibt im Vordergrund, wandert auf jeden Schreibtisch mit und öffnet die Liste beim Überfahren. Praktisch, wenn der Notch beim Surfen zu leicht ausgelöst wird.
 * Abgebrochene Sitzungen (Esc, Stopp, Fenster zu) verschwinden von selbst: Die App merkt, wenn der Claude Code Prozess weg ist oder im Transkript „[Request interrupted by user]“ steht.
 * Im ✦ Menü stehen die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude.
@@ -36,10 +38,10 @@ Weitere Punkte
 
 ## Schnellstart ohne Kompilieren
 
-1. Unter [Releases](https://github.com/JakobWeigand/claude-notch/releases/latest) die neueste `ClaudeNotch.zip` herunterladen.
+1. Unter [Releases](https://github.com/JakobWeigand/notchwerk/releases/latest) die neueste `Notchwerk.zip` herunterladen.
 2. Terminal öffnen und diese eine Zeile einfügen
    ```bash
-   cd ~/Downloads && { [ -d "Claude Notch.app" ] || ditto -x -k ClaudeNotch.zip .; } && rm -rf "/Applications/Claude Notch.app" && mv "Claude Notch.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Claude Notch.app" && open "/Applications/Claude Notch.app"
+   cd ~/Downloads && { [ -d "Notchwerk.app" ] || ditto -x -k Notchwerk.zip .; } && rm -rf "/Applications/Notchwerk.app" "/Applications/Notchwerk.app" && mv "Notchwerk.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Notchwerk.app" && open "/Applications/Notchwerk.app"
    ```
 3. Im Fenster „Mit Claude Code verbinden?“ auf **Verbinden** klicken.
 
@@ -54,7 +56,7 @@ Du baust die App selbst aus dem Quellcode. Das kostet nichts und macOS zeigt kei
 xcode-select --install
 
 # 2. Projekt holen und installieren
-git clone https://github.com/JakobWeigand/claude-notch.git
+git clone https://github.com/JakobWeigand/notchwerk.git
 cd claude-notch
 ./scripts/install.sh
 ```
@@ -73,11 +75,11 @@ Ein Tag genügt. GitHub Actions baut daraus automatisch eine Universal-App (Appl
 git tag v0.2.1 && git push origin v0.2.1
 ```
 
-Weil die App nicht von Apple notarisiert ist (das kostet 99 $ im Jahr), muss man sie beim ersten Mal per Rechtsklick → **Öffnen** starten oder einmal `xattr -dr com.apple.quarantine "/Applications/Claude Notch.app"` ausführen. Die Zeile im Schnellstart erledigt das schon. Wer keine fremden Programme starten möchte, baut wie oben selbst aus dem Quellcode.
+Weil die App nicht von Apple notarisiert ist (das kostet 99 $ im Jahr), muss man sie beim ersten Mal per Rechtsklick → **Öffnen** starten oder einmal `xattr -dr com.apple.quarantine "/Applications/Notchwerk.app"` ausführen. Die Zeile im Schnellstart erledigt das schon. Wer keine fremden Programme starten möchte, baut wie oben selbst aus dem Quellcode.
 
 ## Sicherheit
 
-Die App braucht keinen Server, kein Konto und kein Internet. Alles bleibt auf deinem Mac.
+Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins Internet geht nur die optionale Nutzungsanzeige (siehe unten), und die ist standardmäßig aus.
 
 * Claude Code ruft bei jedem Ereignis `~/.claude-notch/hook.sh` auf. Das Skript schickt die Daten an die App, die **nur auf 127.0.0.1** lauscht. Aus dem Netzwerk ist sie nicht erreichbar.
 * Bei jedem App-Start entsteht ein neuer zufälliger Token (256 Bit) in `~/.claude-notch/auth-header` mit Rechten `600`. Nur dein Benutzer kann ihn lesen. Anfragen ohne passenden Token lehnt die App ab. So kann kein anderes Programm oder anderer Benutzer heimlich Freigaben erteilen.
@@ -85,19 +87,27 @@ Die App braucht keinen Server, kein Konto und kein Internet. Alles bleibt auf de
 * Läuft die App nicht oder antwortest du nicht innerhalb der Wartezeit (Standard 10 Minuten), gibt der Hook keine Entscheidung zurück. Claude Code fragt dann wie gewohnt im Terminal. Es wird also nie automatisch etwas erlaubt.
 * Im öffentlichen Repository liegen keine Geheimnisse. Jeder Nutzer bekommt seinen eigenen Token.
 * „Immer erlauben“ übernimmt genau die Regel, die Claude Code selbst vorschlägt.
-* Für die Nutzungsanzeige liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“). macOS fragt dabei nach; mit **Immer erlauben** nie wieder, mit **Erlauben** höchstens einmal pro App-Start, weil der Token danach im Speicher bleibt. Abgefragt wird nur beim Öffnen der Liste, nie im Hintergrund. Der Token geht nur an `api.anthropic.com`, an dieselbe Stelle, die auch `/usage` in Claude Code abfragt, und wird nirgends gespeichert. Wer das nicht möchte, schaltet **Nutzung zeigen** im Menü aus oder klickt bei der Nachfrage auf „Nicht erlauben“.
+* Die **Nutzungsanzeige** ist standardmäßig aus. Schaltest du sie ein, liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“) und fragt nur die Limits bei `api.anthropic.com` ab, dieselbe Stelle wie `/usage` in Claude Code. macOS fragt dabei nach; mit **Immer erlauben** nie wieder. Abgefragt wird nur beim Öffnen der Liste, nie im Hintergrund, und nichts wird gespeichert. Beachte: Anthropic sieht den Login-Token laut seinen Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, du nutzt sie auf eigene Verantwortung.
+
+## Datenschutz
+
+Die App sammelt keine Daten, enthält keine Analyse- oder Tracking-Bausteine und hat keine Verbindung zu einem Server des Entwicklers. Was Claude Code über die Hooks meldet (Projektpfad, aktuelles Werkzeug, Freigabetexte), wird nur im Arbeitsspeicher gehalten und für die Anzeige genutzt, nie gespeichert oder verschickt. Die einzige Netzverbindung ist die optionale Nutzungsanzeige zu `api.anthropic.com` (siehe Sicherheit). Beim Herunterladen über GitHub Releases gelten die Datenschutzbestimmungen von GitHub.
+
+## Lizenz
+
+MIT-Lizenz, siehe `LICENSE`. Die Software wird ohne jede Gewährleistung bereitgestellt. Der Ordner `~/.claude-notch` und die Kennung `io.github.jakobweigand.claude-notch` sind technische Namen aus der ersten Version und bleiben aus Kompatibilitätsgründen bestehen.
 
 ## Wie es funktioniert
 
 ```
-Claude Code ──Hook──▶ ~/.claude-notch/hook.sh ──HTTP 127.0.0.1 + Token──▶ Claude Notch.app
+Claude Code ──Hook──▶ ~/.claude-notch/hook.sh ──HTTP 127.0.0.1 + Token──▶ Notchwerk.app
      ▲                                                                       │
      └──────────────── Antwort (Erlauben / Ablehnen / Antwort) ◀─────────────┘
 ```
 
 Genutzte Hook-Ereignisse sind `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `Stop`, `StopFailure` und `SessionEnd`. Die Hooks gelten für Claude Code im Terminal, in der IDE und im Code-Tab der Claude Desktop App.
 
-Woher eine Sitzung kommt, liest `hook.sh` aus der Prozesskette (welche App hat Claude Code gestartet) und schickt sie als Kopfzeile mit. Für Chats im Code-Tab der Desktop App findet die App über `~/Library/Application Support/Claude/claude-code-sessions/` den Chat-Titel und den Link, der genau diesen Chat öffnet. Beim ersten Klick auf eine Terminal-Sitzung fragt macOS einmal, ob Claude Notch das Terminal steuern darf (nur dafür, den richtigen Tab auszuwählen).
+Woher eine Sitzung kommt, liest `hook.sh` aus der Prozesskette (welche App hat Claude Code gestartet) und schickt sie als Kopfzeile mit. Für Chats im Code-Tab der Desktop App findet die App über `~/Library/Application Support/Claude/claude-code-sessions/` den Chat-Titel und den Link, der genau diesen Chat öffnet. Beim ersten Klick auf eine Terminal-Sitzung fragt macOS einmal, ob Notchwerk das Terminal steuern darf (nur dafür, den richtigen Tab auszuwählen).
 
 ## Grenzen
 
@@ -120,7 +130,7 @@ Nur Command Line Tools ohne Xcode? Dann kann `swift build` mit dem neuesten SDK 
 SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk swift build
 ```
 
-Der Code liegt in `Sources/ClaudeNotch`
+Der Code liegt in `Sources/Notchwerk`
 
 * `NotchView.swift` Aussehen und Animationen
 * `SettingsWindow.swift` das Einstellungsfenster
