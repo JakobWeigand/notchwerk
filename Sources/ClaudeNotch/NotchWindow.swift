@@ -162,14 +162,19 @@ final class NotchController {
                 if e.state.hovering, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 0.45 {
                     e.state.hovering = false
                 }
+                // Per Klick geöffnete Liste schließt sich, wenn die Maus eine Weile weg ist.
+                if e.state.pinned, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 1.5 {
+                    withAnimation(Theme.spring) { e.state.pinned = false }
+                }
             }
         }
     }
 
     private func interactiveRect(for e: Entry) -> NSRect {
         let g = e.state.geometry
-        let p = Layout.presentation(model: model, prefs: prefs, hovering: e.state.hovering)
-        var size = Layout.size(for: p, model: model, geometry: g)
+        let p = Layout.presentation(model: model, prefs: prefs, geometry: g,
+                                    hovering: e.state.hovering, pinned: e.state.pinned)
+        var size = Layout.size(for: p, model: model, prefs: prefs, geometry: g)
         // Im Ruhezustand reicht der Notch selbst als Fläche zum Überfahren.
         if size == .zero, g.style != .corner { size = g.notchSize }
         let frame = e.panel.frame

@@ -73,36 +73,69 @@ enum Presentation: Equatable {
 @MainActor
 enum Layout {
     static let wing: CGFloat = 54
+    /// Höhe einer Sitzungszeile.
+    static let rowHeight: CGFloat = 26
+    /// Kopfzeile (und Ruhe-Kachel) auf Bildschirmen ohne Notch.
+    static let cornerHeader: CGFloat = 46
+    static let listHeader: CGFloat = 22
+    /// Zeile mit den Nutzungsringen unter der Liste (Trennlinie eingerechnet).
+    static let usageHeight: CGFloat = 50
 
-    static func presentation(model: NotchModel, prefs: Preferences, hovering: Bool) -> Presentation {
+    static func presentation(model: NotchModel, prefs: Preferences, geometry g: ScreenGeometry,
+                             hovering: Bool, pinned: Bool) -> Presentation {
         if let req = model.currentRequest { return .request(req.id) }
         if let banner = model.banner { return .banner(banner.id) }
-        if hovering && prefs.expandOnHover { return .sessions }
-        if model.isWorking || model.sessions.values.contains(where: { $0.state == .waiting }) { return .compact }
+        if pinned { return .sessions }
+        // Oben rechts (ohne Notch) öffnet nur ein Klick die Liste, nicht das Überfahren.
+        if hovering && prefs.expandOnHover && g.style != .corner { return .sessions }
+        if !model.activeSessions.isEmpty { return .compact }
         if prefs.alwaysShowRim || model.claudeAppRunning || !model.sessions.isEmpty { return .rim }
         return .hidden
     }
 
-    static func size(for p: Presentation, model: NotchModel, geometry g: ScreenGeometry) -> CGSize {
+    /// Zeigt der Zustand Sitzungszeilen direkt unter dem Notch?
+    static func showsRows(_ p: Presentation, model: NotchModel, prefs: Preferences) -> Bool {
+        p == .compact && prefs.showSessionsInNotch && !model.activeSessions.isEmpty
+    }
+
+    static func size(for p: Presentation, model: NotchModel, prefs: Preferences, geometry g: ScreenGeometry) -> CGSize {
         let n = g.notchSize
-        let expandedWidth: CGFloat = g.style == .corner ? 430 : max(n.width + 2 * wing, 480)
-        let top: CGFloat = g.style == .corner ? 0 : n.height
+        let corner = g.style == .corner
+        let ext: CGFloat = corner ? 0 : CGFloat(prefs.notchExtension)
+        let expandedWidth: CGFloat = corner ? 430 : max(n.width + 2 * wing, 480)
+        let top: CGFloat = corner ? cornerHeader : n.height + ext
+        let rows = prefs.compactRows
+        let active = model.activeSessions.count
 
         switch p {
         case .hidden:
-            return g.style == .corner ? .zero : n
+            return corner ? .zero : n
         case .rim:
-            return g.style == .corner ? CGSize(width: 40, height: 40) : CGSize(width: n.width + 8, height: n.height + 3)
+            return corner ? CGSize(width: cornerHeader, height: cornerHeader)
+                          : CGSize(width: n.width + 8 + ext, height: n.height + 3 + ext)
         case .compact:
-            return g.style == .corner ? CGSize(width: 250, height: 40) : CGSize(width: n.width + 2 * wing, height: n.height)
+            if showsRows(p, model: model, prefs: prefs) {
+                let shown = CGFloat(min(active, rows))
+                let footer: CGFloat = active > rows ? 16 : 0
+                return CGSize(width: expandedWidth, height: top + 4 + shown * rowHeight + footer + 10)
+            }
+            return corner ? CGSize(width: 250, height: cornerHeader)
+                          : CGSize(width: n.width + 2 * wing, height: n.height + ext)
         case .banner:
             return CGSize(width: expandedWidth, height: top + 74)
         case .sessions:
-            let rows = max(1, min(model.sessions.count, 4))
-            return CGSize(width: expandedWidth, height: top + 50 + CGFloat(rows) * 40)
+            let body: CGFloat = active == 0 ? 40 : listRows(active: active, max: rows) * rowHeight
+            let footer: CGFloat = model.idleCount > 0 ? 16 : 0
+            let usage: CGFloat = prefs.showUsage ? usageHeight : 0
+            return CGSize(width: expandedWidth, height: top + 6 + listHeader + 4 + body + footer + usage + 12)
         case .request:
             return CGSize(width: expandedWidth, height: top + requestHeight(model.currentRequest))
         }
+    }
+
+    /// Sichtbare Zeilen in der Liste: höchstens `max`, bei mehr eine halbe Zeile als Hinweis zum Scrollen.
+    static func listRows(active: Int, max rows: Int) -> CGFloat {
+        active <= rows ? CGFloat(active) : CGFloat(rows) + 0.5
     }
 
     static func requestHeight(_ req: PendingRequest?) -> CGFloat {

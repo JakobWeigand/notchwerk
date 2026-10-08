@@ -12,20 +12,23 @@ Claude Notch ist eine kleine, kostenlose Mac App für die Menüleiste. Sie zeigt
 
 | Zustand | Am Notch | Auf Bildschirmen ohne Notch |
 |---|---|---|
-| Ruhe | dünner orangener Rand um den Notch | kleines Maskottchen oben rechts |
-| Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen | Pille mit aktueller Aktion |
+| Ruhe | dünner orangener Rand um den Notch | Claude-Funke oben rechts, Klick öffnet die Liste |
+| Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen. Überfahren zeigt die Sitzungen, die gerade arbeiten | Pille mit aktueller Aktion, Klick zeigt die Sitzungen |
 | Claude braucht eine Freigabe | Notch klappt auf, pulsiert und zeigt Befehl mit **Erlauben / Immer erlauben / Ablehnen / Im Terminal** | gleiche Karte oben rechts |
 | Claude hat eine Frage | Frage und Antwortmöglichkeiten | gleich |
-| Claude ist fertig | kurze Einblendung „Fertig“ mit Ton | gleich |
+| Claude ist fertig | kurze Einblendung „Fertig“ mit Ton, die Zeile verschwindet kurz danach | gleich |
 | Claude App wird gestartet | kurze Begrüßung | gleich |
 
 Weitere Punkte
 
 * Bleibt immer im Vordergrund, auch in Vollbild-Spaces und über Videos.
 * Erkennt automatisch ob ein Notch da ist. Bei zugeklapptem MacBook an Monitor, Maus und Tastatur erscheint die Anzeige oben rechts (oder oben mittig, umstellbar im Menü).
-* Mit der Maus über den Notch fahren zeigt alle laufenden Claude Code Sitzungen.
-* Mehrere Sitzungen gleichzeitig, jeweils mit Projektname.
-* Alles einstellbar über das ✦ Symbol in der Menüleiste. Dort gibt es auch **Demo abspielen**, um alle Animationen ohne Claude zu sehen.
+* Es wird nur gezeigt, was gerade passiert: Sitzungen, die arbeiten oder dich brauchen. Fertige Sitzungen verschwinden wieder. „Wartet“ steht nur da, wenn Claude wirklich eine Freigabe oder Antwort braucht.
+* Jede Zeile zeigt, woher die Sitzung kommt: **Terminal**, **VS Code**, **Claude App** (dort mit dem Chat-Titel). Ein Klick auf die Zeile holt genau dieses Fenster nach vorn: den Tab im Terminal, das Projektfenster in VS Code oder den Chat in der Claude App.
+* Die Liste erscheint beim Überfahren des Notch (oben rechts per Klick auf den Funken) und verschwindet, sobald die Maus wieder weg ist. Bis zu zwei Zeilen sind sofort zu sehen, bei mehr lässt sich scrollen. Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
+* Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt.
+* Der Abstand des orangenen Rands unter dem Notch ist einstellbar (Standard 1 mm), damit der echte Notch nicht hervorschaut.
+* Alles einstellbar über das ✦ Symbol in der Menüleiste. Dort stehen auch die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude.
 * Wenn die App nicht läuft, merkt Claude Code nichts davon und fragt ganz normal im Terminal.
 
 ## Schnellstart ohne Kompilieren
@@ -84,6 +87,7 @@ Die App braucht keinen Server, kein Konto und kein Internet. Alles bleibt auf de
 * Läuft die App nicht oder antwortest du nicht innerhalb der Wartezeit (Standard 10 Minuten), gibt der Hook keine Entscheidung zurück. Claude Code fragt dann wie gewohnt im Terminal. Es wird also nie automatisch etwas erlaubt.
 * Im öffentlichen Repository liegen keine Geheimnisse. Jeder Nutzer bekommt seinen eigenen Token.
 * „Immer erlauben“ übernimmt genau die Regel, die Claude Code selbst vorschlägt.
+* Für die Nutzungsanzeige liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“). macOS fragt dabei nach; mit **Immer erlauben** nie wieder, mit **Erlauben** höchstens einmal pro App-Start, weil der Token danach im Speicher bleibt. Abgefragt wird nur beim Öffnen der Liste, nie im Hintergrund. Der Token geht nur an `api.anthropic.com`, an dieselbe Stelle, die auch `/usage` in Claude Code abfragt, und wird nirgends gespeichert. Wer das nicht möchte, schaltet **Nutzung zeigen** im Menü aus oder klickt bei der Nachfrage auf „Nicht erlauben“.
 
 ## Wie es funktioniert
 
@@ -95,9 +99,12 @@ Claude Code ──Hook──▶ ~/.claude-notch/hook.sh ──HTTP 127.0.0.1 + T
 
 Genutzte Hook-Ereignisse sind `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `Stop`, `StopFailure` und `SessionEnd`. Die Hooks gelten für Claude Code im Terminal, in der IDE und im Code-Tab der Claude Desktop App.
 
+Woher eine Sitzung kommt, liest `hook.sh` aus der Prozesskette (welche App hat Claude Code gestartet) und schickt sie als Kopfzeile mit. Für Chats im Code-Tab der Desktop App findet die App über `~/Library/Application Support/Claude/claude-code-sessions/` den Chat-Titel und den Link, der genau diesen Chat öffnet. Beim ersten Klick auf eine Terminal-Sitzung fragt macOS einmal, ob Claude Notch das Terminal steuern darf (nur dafür, den richtigen Tab auszuwählen).
+
 ## Grenzen
 
-* Normale Chats in der Claude Desktop App bieten keine Schnittstelle. Hier erkennt die App nur, dass Claude geöffnet wurde (Begrüßung und Rand). Freigaben und Fragen kommen aus Claude Code.
+* Normale Chats in der Claude Desktop App und auf claude.ai im Browser bieten keine Schnittstelle. Hier erkennt die App nur, dass Claude geöffnet wurde (Begrüßung und Rand). Ob dort gerade eine Antwort entsteht, lässt sich von außen nicht zuverlässig erkennen. Angezeigt wird alles aus Claude Code: Terminal, VS Code und der Code-Tab der Desktop App.
+* In VS Code holt der Klick das Fenster nach vorn, in dem der Projektordner offen ist. Läuft Claude Code dort in einem Unterordner, öffnet VS Code diesen Ordner in einem neuen Fenster.
 * Fragen über `AskUserQuestion` im Notch zu beantworten ist experimentell und standardmäßig aus. Dann zeigt der Notch die Frage an und du antwortest im Terminal.
 * Benötigt macOS 13 Ventura oder neuer.
 
@@ -109,11 +116,22 @@ swift run              # direkt starten
 ./scripts/build-app.sh # fertige .app in dist/
 ```
 
+Nur Command Line Tools ohne Xcode? Dann kann `swift build` mit dem neuesten SDK an `@State` scheitern (dem SDK fehlt das SwiftUI-Makro-Plugin, das erst Xcode mitbringt). `build-app.sh` weicht dann automatisch auf das vorherige SDK aus. Von Hand geht das so:
+
+```bash
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk swift build
+```
+
 Der Code liegt in `Sources/ClaudeNotch`
 
 * `NotchView.swift` Aussehen und Animationen
 * `NotchModel.swift` Zustände und Verarbeitung der Claude Code Ereignisse
 * `NotchWindow.swift` Fenster über allem, Bildschirmerkennung, Maus
+* `Geometry.swift` Größen und welcher Zustand gerade gezeigt wird
+* `SessionOrigin.swift` Terminal, VS Code oder Claude App? (aus der Prozesskette)
+* `DesktopSessions.swift` Chat-Titel und Link für Sitzungen aus der Claude Desktop App
+* `SessionFocus.swift` holt beim Klick das richtige Fenster nach vorn
+* `Usage.swift` Nutzung (Sitzungs- und Wochenlimit) wie bei `/usage`
 * `EventServer.swift` lokaler Server mit Token-Prüfung
 * `HookInstaller.swift` Hook-Skript und Eintrag in `~/.claude/settings.json`
 * `Mascot.swift` das kleine Pixel-Maskottchen

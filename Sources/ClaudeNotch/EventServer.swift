@@ -83,6 +83,12 @@ final class EventServer {
             respond(conn, status: "400 Bad Request", body: nil)
             return
         }
+        // hook.sh schickt die Prozesskette (Base64) mit, damit die App die Herkunft der Sitzung kennt.
+        var event = obj
+        if let encoded = request.headers["x-claude-notch-origin"], !encoded.isEmpty,
+           let data = Data(base64Encoded: encoded), let text = String(data: data, encoding: .utf8) {
+            event["_notch_origin"] = text
+        }
 
         let once = OnceFlag()
         let reply: Reply = { [weak self] data in
@@ -95,7 +101,7 @@ final class EventServer {
         }
         DispatchQueue.main.async { [weak self] in
             if let cb = self?.onEvent {
-                cb(obj, reply, onClose)
+                cb(event, reply, onClose)
             } else {
                 reply(nil)
             }

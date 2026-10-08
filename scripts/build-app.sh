@@ -7,13 +7,25 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.2.0}"
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 ARGS=(-c release)
 for arch in ${ARCHS:-}; do ARGS+=(--arch "$arch"); done
 
 echo "▸ Baue Claude Notch $VERSION …"
-swift build "${ARGS[@]}"
+if ! swift build "${ARGS[@]}"; then
+  # Nur Command Line Tools, kein Xcode: Das neueste SDK verlangt ein SwiftUI-Makro-Plugin,
+  # das erst Xcode mitbringt. Mit dem vorherigen SDK klappt es.
+  for sdk in $(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk 2>/dev/null | sort -r); do
+    echo "▸ Erneut mit $(basename "$sdk") …"
+    ARGS+=(--scratch-path ".build/$(basename "$sdk")")
+    export SDKROOT="$sdk"
+    swift build "${ARGS[@]}" && break
+    unset SDKROOT
+    unset 'ARGS[-1]'; unset 'ARGS[-1]'
+  done
+  [ -n "${SDKROOT:-}" ] || { echo "✗ Build fehlgeschlagen"; exit 1; }
+fi
 BIN="$(swift build "${ARGS[@]}" --show-bin-path)/ClaudeNotch"
 
 APP="dist/Claude Notch.app"

@@ -24,6 +24,8 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Claude Notch holt auf Klick den Terminal-Tab nach vorn, in dem eine Claude Code Sitzung läuft.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Inoffizielles Hobbyprojekt. Nicht von Anthropic.</string>
 </dict>

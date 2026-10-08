@@ -158,6 +158,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
+        if prefs.showUsage, let snap = UsageMonitor.shared.snapshot {
+            let parts = snap.windows.prefix(3).map { "\($0.title) \(Int($0.percent.rounded())) %" }
+            let usage = NSMenuItem(title: "Nutzung: " + parts.joined(separator: " · "), action: nil, keyEquivalent: "")
+            usage.isEnabled = false
+            menu.addItem(usage)
+        }
+        for s in model.activeSessions {
+            let text = s.detail.isEmpty ? s.displayName : "\(s.displayName)  ·  \(s.detail)"
+            let mi = item(text, #selector(focusSession(_:)))
+            mi.representedObject = s.id
+            mi.indentationLevel = 1
+            mi.toolTip = "Fenster nach vorn holen (\(s.origin.label.isEmpty ? s.cwd : s.origin.label))"
+            menu.addItem(mi)
+        }
         menu.addItem(.separator())
 
         if HookInstaller.isInstalled {
@@ -171,6 +185,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(toggle("Orangener Rand immer sichtbar", prefs.alwaysShowRim, #selector(toggleRim)))
         menu.addItem(toggle("Beim Überfahren aufklappen", prefs.expandOnHover, #selector(toggleHover)))
+        menu.addItem(toggle("Arbeitende Sitzungen unter dem Notch zeigen", prefs.showSessionsInNotch, #selector(toggleShowSessions)))
+        menu.addItem(toggle("Nutzung (Sitzungs- und Wochenlimit) zeigen", prefs.showUsage, #selector(toggleUsage)))
+
+        let rowsItem = NSMenuItem(title: "Zeilen unter dem Notch", action: nil, keyEquivalent: "")
+        let rowsMenu = NSMenu()
+        for n in 1...3 {
+            let mi = toggle("\(n) Zeile\(n == 1 ? "" : "n")", prefs.compactRows == n, #selector(chooseRows(_:)))
+            mi.representedObject = n
+            rowsMenu.addItem(mi)
+        }
+        rowsItem.submenu = rowsMenu
+        menu.addItem(rowsItem)
+
+        let extItem = NSMenuItem(title: "Abstand unter dem Notch", action: nil, keyEquivalent: "")
+        let extMenu = NSMenu()
+        for choice in Preferences.extensionChoices {
+            let mi = toggle(choice.title, prefs.notchExtension == choice.value, #selector(chooseExtension(_:)))
+            mi.representedObject = choice.value
+            extMenu.addItem(mi)
+        }
+        extItem.submenu = extMenu
+        menu.addItem(extItem)
         menu.addItem(toggle("Freigaben im Notch beantworten", prefs.answerInNotch, #selector(toggleAnswer)))
         menu.addItem(toggle("Fragen im Notch beantworten (experimentell)", prefs.answerQuestionsInNotch, #selector(toggleQuestions)))
         menu.addItem(toggle("Begrüßung beim Start der Claude App", prefs.greetOnClaudeLaunch, #selector(toggleGreet)))
@@ -231,6 +267,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleGreet() { prefs.greetOnClaudeLaunch.toggle() }
     @objc private func toggleSounds() { prefs.playSounds.toggle() }
     @objc private func toggleAllScreens() { prefs.showOnAllScreens.toggle() }
+    @objc private func toggleShowSessions() { prefs.showSessionsInNotch.toggle() }
+    @objc private func toggleUsage() {
+        prefs.showUsage.toggle()
+        if !prefs.showUsage { UsageMonitor.shared.stop() }
+    }
+
+    @objc private func focusSession(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String, let session = model.sessions[id] {
+            model.focus(session)
+        }
+    }
+
+    @objc private func chooseRows(_ sender: NSMenuItem) {
+        if let n = sender.representedObject as? Int { prefs.compactRows = n }
+    }
+
+    @objc private func chooseExtension(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? Double { prefs.notchExtension = value }
+    }
 
     @objc private func choosePlacement(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let p = Preferences.Placement(rawValue: raw) {

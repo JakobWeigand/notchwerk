@@ -4,6 +4,8 @@ import SwiftUI
 @MainActor
 final class PanelState: ObservableObject {
     @Published var hovering = false
+    /// Per Klick aufgeklappt. Schließt sich wieder, wenn die Maus eine Weile weg ist.
+    @Published var pinned = false
     @Published var geometry: ScreenGeometry
 
     init(geometry: ScreenGeometry) {
@@ -18,19 +20,31 @@ struct NotchRootView: View {
 
     var body: some View {
         let g = panel.geometry
-        let p = Layout.presentation(model: model, prefs: prefs, hovering: panel.hovering)
-        let size = Layout.size(for: p, model: model, geometry: g)
+        let p = Layout.presentation(model: model, prefs: prefs, geometry: g,
+                                    hovering: panel.hovering, pinned: panel.pinned)
+        let size = Layout.size(for: p, model: model, prefs: prefs, geometry: g)
 
         ZStack(alignment: g.style == .corner ? .topTrailing : .top) {
             Color.clear
-            NotchBody(model: model, prefs: prefs, presentation: p, geometry: g)
-                .frame(width: size.width, height: size.height)
-                .opacity(p == .hidden && g.style == .corner ? 0 : 1)
+            NotchBody(model: model, prefs: prefs, presentation: p, geometry: g, pinned: panel.pinned) {
+                togglePinned(p)
+            }
+            .frame(width: size.width, height: size.height)
+            .opacity(p == .hidden && g.style == .corner ? 0 : 1)
         }
         .frame(width: g.panelSize.width, height: g.panelSize.height,
                alignment: g.style == .corner ? .topTrailing : .top)
         .animation(Theme.spring, value: p)
         .animation(Theme.spring, value: size)
+    }
+
+    /// Klick auf die Anzeige klappt die Sitzungsliste auf oder zu. Während einer Anfrage
+    /// oder Einblendung passiert nichts, die haben ihre eigenen Knöpfe.
+    private func togglePinned(_ p: Presentation) {
+        switch p {
+        case .request, .banner: return
+        default: withAnimation(Theme.spring) { panel.pinned.toggle() }
+        }
     }
 }
 
@@ -40,12 +54,19 @@ private struct NotchBody: View {
     @ObservedObject var prefs: Preferences
     let presentation: Presentation
     let geometry: ScreenGeometry
+    let pinned: Bool
+    let onTap: () -> Void
 
+    private var corner: Bool { geometry.style == .corner }
     private var expanded: Bool { presentation.isExpanded }
+    private var showsRows: Bool { Layout.showsRows(presentation, model: model, prefs: prefs) }
+    private var open: Bool { expanded || showsRows }
     private var attention: Bool {
         if case .request = presentation { return true }
         return false
     }
+    /// Zusätzlicher Abstand unter dem Notch, damit der Rand nicht am Notch klebt.
+    private var ext: CGFloat { corner ? 0 : CGFloat(prefs.notchExtension) }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -53,6 +74,8 @@ private struct NotchBody: View {
             content
                 .clipShape(clipShape)
         }
+        .contentShape(fillShape)
+        .onTapGesture(perform: onTap)
     }
 
     // MARK: Hintergrund und Rand
@@ -63,30 +86,31 @@ private struct NotchBody: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(attention || model.isWorking))) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             let pulse = attention ? 0.5 + 0.5 * sin(t * 4.2) : (model.isWorking ? 0.5 + 0.5 * sin(t * 2.2) : 0.35)
-            let glow = rimVisible ? (expanded ? 0.55 : 0.35) + 0.45 * pulse : 0
+            let glow = rimVisible ? (open ? 0.55 : 0.35) + 0.45 * pulse : 0
             ZStack {
                 fillShape.fill(Color.black)
                 strokeShape
                     .stroke(Theme.orange.opacity(rimVisible ? 0.95 : 0),
-                            style: StrokeStyle(lineWidth: expanded ? 1.6 : 1.4, lineCap: .round, lineJoin: .round))
+                            style: StrokeStyle(lineWidth: open ? 1.6 : 1.4, lineCap: .round, lineJoin: .round))
                     .shadow(color: Theme.orange.opacity(glow), radius: attention ? 9 : 5)
                     .shadow(color: Theme.orangeBright.opacity(glow * 0.5), radius: 2)
             }
         }
     }
 
-    private var topRadius: CGFloat { expanded ? 14 : 7 }
-    private var bottomRadius: CGFloat { expanded ? 24 : (presentation == .compact ? 12 : 10) }
+    private var topRadius: CGFloat { open ? 14 : 7 }
+    private var bottomRadius: CGFloat { open ? 24 : (presentation == .compact ? 12 : 10) }
+    private var cornerRadius: CGFloat { open ? 22 : (presentation == .rim ? 15 : 20) }
 
     private var fillShape: AnyShape {
-        geometry.style == .corner
-            ? AnyShape(RoundedRectangle(cornerRadius: expanded ? 22 : 20, style: .continuous))
+        corner
+            ? AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             : AnyShape(NotchShape(topRadius: topRadius, bottomRadius: bottomRadius))
     }
 
     private var strokeShape: AnyShape {
-        geometry.style == .corner
-            ? AnyShape(RoundedRectangle(cornerRadius: expanded ? 22 : 20, style: .continuous))
+        corner
+            ? AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             : AnyShape(NotchShape(topRadius: topRadius, bottomRadius: bottomRadius, openTop: true))
     }
 
@@ -96,21 +120,30 @@ private struct NotchBody: View {
 
     @ViewBuilder
     private var content: some View {
-        let topBar = geometry.style == .corner ? 0 : geometry.notchSize.height
-        let side = geometry.style == .corner ? 16 : topRadius + 16
+        let side: CGFloat = corner ? 14 : topRadius + 16
 
         VStack(spacing: 0) {
-            if geometry.style == .corner {
+            if corner {
                 cornerHeader
+                    .frame(height: Layout.cornerHeader)
             } else {
                 wings
-                    .frame(height: topBar)
+                    .frame(height: geometry.notchSize.height)
+                if ext > 0 {
+                    Color.clear.frame(height: ext)
+                }
             }
-            if expanded {
+            if showsRows {
+                CompactRowsView(model: model, rows: prefs.compactRows)
+                    .padding(.horizontal, side - 6)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.animation(.easeOut(duration: 0.15)))
+            } else if expanded {
                 expandedContent
                     .padding(.horizontal, side)
-                    .padding(.top, geometry.style == .corner ? 2 : 8)
-                    .padding(.bottom, 14)
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.92, anchor: .top)).animation(Theme.spring.delay(0.06)),
                         removal: .opacity.animation(.easeOut(duration: 0.12))))
@@ -137,33 +170,45 @@ private struct NotchBody: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.4)))
             }
         }
-        .padding(.horizontal, expanded ? topRadius + 4 : topRadius - 3)
+        .padding(.horizontal, open ? topRadius + 4 : topRadius - 3)
     }
 
-    /// Kopfzeile für Bildschirme ohne Notch (oben rechts).
+    /// Kopfzeile für Bildschirme ohne Notch (oben rechts). Im Ruhezustand nur das Claude-Symbol.
     @ViewBuilder
     private var cornerHeader: some View {
+        let idle = presentation == .rim || presentation == .hidden
         HStack(spacing: 10) {
-            Mascot(mood: mascotMood, size: 15)
-                .frame(width: 26, height: 40)
-            if presentation != .rim && presentation != .hidden {
+            if idle {
+                Spacer(minLength: 0)
+                SparkShape()
+                    .fill(Theme.orange)
+                    .frame(width: 22, height: 22)
+                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                Spacer(minLength: 0)
+            } else {
+                SparkSpinner(active: model.isWorking || attention, size: 16,
+                             color: attention ? Theme.orangeBright : Theme.orange)
+                    .frame(width: 22)
                 Text(headline)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.cream)
                     .lineLimit(1)
                     .transition(.opacity)
                 Spacer(minLength: 0)
-                SparkSpinner(active: model.isWorking || attention, size: 12)
+                Mascot(mood: mascotMood, size: 14)
+                    .frame(width: 24)
             }
         }
-        .padding(.horizontal, presentation == .rim || presentation == .hidden ? 7 : 12)
-        .frame(height: 40)
+        .padding(.horizontal, idle ? 0 : 14)
     }
 
     private var headline: String {
         if model.currentRequest != nil { return "Claude braucht dich" }
         if let b = model.banner { return b.title }
-        if let s = model.activeSessions.first { return s.detail.isEmpty ? s.projectName : s.detail }
+        if case .sessions = presentation { return "Claude" }
+        let active = model.activeSessions
+        if showsRows { return "\(active.count) aktive Sitzung\(active.count == 1 ? "" : "en")" }
+        if let s = active.first { return s.detail.isEmpty ? s.displayName : "\(s.displayName) · \(s.detail)" }
         return "Claude"
     }
 
@@ -191,7 +236,8 @@ private struct NotchBody: View {
                     .onTapGesture { model.clearBanner() }
             }
         case .sessions:
-            SessionListView(sessions: model.activeSessions, claudeRunning: model.claudeAppRunning)
+            SessionListView(model: model, rows: prefs.compactRows, pinned: pinned,
+                            showUsage: prefs.showUsage, maxGauges: corner ? 2 : 3, onClose: onTap)
         default:
             EmptyView()
         }
@@ -231,52 +277,216 @@ private struct BannerView: View {
     }
 }
 
-private struct SessionListView: View {
-    let sessions: [SessionInfo]
-    let claudeRunning: Bool
+/// Die Zeilen direkt unter dem Notch, solange Claude arbeitet. Höchstens `rows` Stück.
+private struct CompactRowsView: View {
+    @ObservedObject var model: NotchModel
+    let rows: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        let active = model.activeSessions
+        VStack(spacing: 0) {
+            ForEach(active.prefix(rows)) { s in
+                SessionRow(session: s) { model.focus(s) }
+            }
+            if active.count > rows {
+                Text("+\(active.count - rows) weitere · zum Öffnen klicken")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.muted)
+                    .frame(height: 16)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 8)
+            }
+        }
+    }
+}
+
+/// Die aufgeklappte Liste: alle aktiven Sitzungen, bei mehr als `rows` zum Scrollen.
+private struct SessionListView: View {
+    @ObservedObject var model: NotchModel
+    let rows: Int
+    let pinned: Bool
+    let showUsage: Bool
+    let maxGauges: Int
+    let onClose: () -> Void
+
+    var body: some View {
+        let active = model.activeSessions
+        let visible = Layout.listRows(active: active.count, max: rows)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
                 Text("Claude")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.orange)
                 Spacer()
-                Text(sessions.isEmpty ? (claudeRunning ? "App geöffnet" : "Bereit") : "\(sessions.count) Sitzung\(sessions.count == 1 ? "" : "en")")
+                Text(active.isEmpty
+                     ? (model.claudeAppRunning ? "App geöffnet" : "Bereit")
+                     : "\(active.count) aktive Sitzung\(active.count == 1 ? "" : "en")")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.muted)
+                if pinned {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Theme.muted)
+                            .frame(width: 18, height: 18)
+                            .background(Circle().fill(Color.white.opacity(0.08)))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            if sessions.isEmpty {
+            .frame(height: Layout.listHeader)
+            Spacer().frame(height: 4)
+            if active.isEmpty {
                 Text("Keine aktive Claude Code Sitzung. Sobald Claude arbeitet oder dich braucht, erscheint es hier.")
                     .font(.system(size: 11.5))
                     .foregroundStyle(Theme.cream.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(sessions.prefix(4)) { s in
-                HStack(spacing: 10) {
-                    statusIcon(s.state)
-                        .frame(width: 16)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(s.projectName)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Theme.cream)
-                            .lineLimit(1)
-                        Text(s.detail)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(Theme.muted)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .topLeading)
+            } else {
+                ScrollView(.vertical, showsIndicators: active.count > rows) {
+                    VStack(spacing: 0) {
+                        ForEach(active) { s in
+                            SessionRow(session: s) { model.focus(s) }
+                        }
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(height: 32)
+                .frame(height: visible * Layout.rowHeight)
+            }
+            if model.idleCount > 0 {
+                Text("\(model.idleCount) weitere Sitzung\(model.idleCount == 1 ? "" : "en") bereit")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.muted)
+                    .frame(height: 16)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 8)
+            }
+            if showUsage {
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.top, 6)
+                UsageView(maxGauges: maxGauges)
+                    .frame(height: Layout.usageHeight - 7)
             }
         }
     }
+}
+
+/// Nutzung wie bei `/usage`: Ringe für Sitzungs- und Wochenlimit, dazu wie viel noch frei ist.
+private struct UsageView: View {
+    let maxGauges: Int
+    @ObservedObject private var monitor = UsageMonitor.shared
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let snap = monitor.snapshot {
+                ForEach(snap.windows.prefix(maxGauges)) { window in
+                    UsageGauge(window: window)
+                }
+                Spacer(minLength: 0)
+            } else {
+                Text(monitor.status.text)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 6)
+        .onAppear { monitor.refreshIfStale() }
+    }
+}
+
+private struct UsageGauge: View {
+    let window: UsageWindow
+
+    var body: some View {
+        let used = Int(window.percent.rounded())
+        HStack(spacing: 7) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 3.5)
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(window.percent, 100) / 100))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(Theme.softSpring, value: window.percent)
+                Text("\(used)")
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.cream)
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(window.title) · noch \(window.remainingPercent) %")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(Theme.cream)
+                    .lineLimit(1)
+                Text(window.resetText())
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+            }
+        }
+        .help("\(window.title): \(used) % des Limits genutzt, \(window.remainingPercent) % frei")
+    }
+
+    private var tint: Color {
+        if window.percent >= 85 { return Theme.deny }
+        if window.percent >= 60 { return Theme.orangeBright }
+        return Theme.orange
+    }
+}
+
+/// Eine Sitzung: Zustand, Name, was gerade passiert, woher sie kommt. Klick holt das Fenster nach vorn.
+private struct SessionRow: View {
+    let session: SessionInfo
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            statusIcon
+                .frame(width: 14)
+            Text(session.displayName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.cream)
+                .lineLimit(1)
+                .frame(maxWidth: 230, alignment: .leading)
+                .layoutPriority(1)
+            if !session.detail.isEmpty {
+                Text(session.detail)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 4)
+            let label = session.origin.label
+            if !label.isEmpty {
+                Text(label)
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.08)))
+            }
+            Image(systemName: "arrow.up.forward")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Theme.orange.opacity(hover ? 1 : 0.35))
+        }
+        .padding(.horizontal, 8)
+        .frame(height: Layout.rowHeight)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(hover ? 0.09 : 0)))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .help(session.cwd)
+    }
 
     @ViewBuilder
-    private func statusIcon(_ state: SessionInfo.State) -> some View {
-        switch state {
+    private var statusIcon: some View {
+        switch session.state {
         case .working: SparkSpinner(active: true, size: 12)
         case .waiting: Circle().fill(Theme.orangeBright).frame(width: 8, height: 8)
         case .done: Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.allow)

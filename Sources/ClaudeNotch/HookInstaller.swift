@@ -30,7 +30,7 @@ enum HookInstaller {
 
     static let script = """
     #!/bin/bash
-    # Claude Notch Hook: leitet Claude Code Ereignisse an die Notch App weiter.
+    # Claude Notch Hook (Version 2): leitet Claude Code Ereignisse an die Notch App weiter.
     # Läuft die App nicht, passiert nichts und Claude Code arbeitet ganz normal weiter.
     DIR="$HOME/.claude-notch"
     MAX="${1:-2}"
@@ -40,8 +40,21 @@ enum HookInstaller {
     INPUT="$(cat)"
     # Fragen von Claude (AskUserQuestion) dürfen auf eine Antwort im Notch warten.
     case "$INPUT" in *'"PreToolUse"'*) case "$INPUT" in *'"AskUserQuestion"'*) MAX=3590 ;; esac ;; esac
+    # Herkunft: die Prozesskette nach oben. Daran erkennt die App, ob die Sitzung im Terminal,
+    # in VS Code oder in der Claude App läuft, und kann beim Klick das richtige Fenster öffnen.
+    ORIGIN=""; P=$PPID; set -f
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      [ "$P" -gt 1 ] 2>/dev/null || break
+      LINE="$(/bin/ps -o ppid=,tty=,comm= -p "$P" 2>/dev/null)" || break
+      set -- $LINE; [ $# -ge 3 ] || break
+      PP="$1"; TTY="$2"; shift 2
+      ORIGIN="$ORIGIN$(printf '%s\\t%s\\t%s' "$P" "$TTY" "$*")"$'\\n'
+      P="$PP"
+    done
+    ORIGIN_B64="$(printf '%s' "$ORIGIN" | /usr/bin/base64 | /usr/bin/tr -d '\\n')"
     printf '%s' "$INPUT" | /usr/bin/curl -s --fail --connect-timeout 1 --max-time "$MAX" \\
       -H @"$DIR/auth-header" -H 'Content-Type: application/json' \\
+      -H "X-Claude-Notch-Origin: $ORIGIN_B64" \\
       --data-binary @- "http://127.0.0.1:$PORT/event" 2>/dev/null
     exit 0
 
