@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
         watchClaudeApp()
 
+        // Beim allerersten Start automatisch beim Anmelden starten, damit die App immer da ist.
+        if !UserDefaults.standard.bool(forKey: "didFirstLaunch") {
+            UserDefaults.standard.set(true, forKey: "didFirstLaunch")
+            try? SMAppService.mainApp.register()
+        }
+
         if !HookInstaller.isInstalled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
                 Task { @MainActor in self?.offerHookInstall() }
