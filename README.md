@@ -33,7 +33,7 @@ Weitere Punkte
 
 ## Schnellstart ohne Kompilieren
 
-1. Unter **Releases** die neueste `ClaudeNotch.zip` herunterladen (im Browser bei GitHub angemeldet sein).
+1. Unter [Releases](https://github.com/JakobWeigand/claude-notch/releases/latest) die neueste `ClaudeNotch.zip` herunterladen.
 2. Terminal öffnen und diese eine Zeile einfügen
    ```bash
    cd ~/Downloads && { [ -d "Claude Notch.app" ] || ditto -x -k ClaudeNotch.zip .; } && rm -rf "/Applications/Claude Notch.app" && mv "Claude Notch.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Claude Notch.app" && open "/Applications/Claude Notch.app"
@@ -51,7 +51,7 @@ Du baust die App selbst aus dem Quellcode. Das kostet nichts und macOS zeigt kei
 xcode-select --install
 
 # 2. Projekt holen und installieren
-git clone -b claude-notch https://github.com/JakobWeigand/Allgemein.git claude-notch
+git clone https://github.com/JakobWeigand/claude-notch.git
 cd claude-notch
 ./scripts/install.sh
 ```
@@ -62,20 +62,15 @@ Damit die App nach jedem Neustart läuft, im Menü **Beim Anmelden starten** anh
 
 Aktualisieren geht mit `git pull && ./scripts/install.sh`. Entfernen mit `./scripts/uninstall.sh`.
 
-## Öffentlich teilen
+## Neue Download-Version
 
-1. Auf GitHub ein neues öffentliches Repository anlegen, z.B. `claude-notch`.
-2. Diesen Branch dorthin schieben
-   ```bash
-   git remote add public https://github.com/JakobWeigand/claude-notch.git
-   git push public claude-notch:main
-   ```
-3. Für eine fertige Download-Version einen Tag setzen. GitHub Actions baut dann automatisch eine Universal-App (Apple Silicon und Intel) und hängt sie als Release an. Für öffentliche Repositories ist das kostenlos.
-   ```bash
-   git tag v0.1.0 && git push public v0.1.0
-   ```
+Ein Tag genügt. GitHub Actions baut daraus automatisch eine Universal-App (Apple Silicon und Intel) und hängt sie unter **Releases** an.
 
-Andere laden dann `ClaudeNotch.zip` aus den Releases. Weil die App nicht von Apple notarisiert ist (das kostet 99 $ im Jahr), muss man sie beim ersten Mal per Rechtsklick → **Öffnen** starten oder einmal `xattr -dr com.apple.quarantine "/Applications/Claude Notch.app"` ausführen. Wer keine fremden Programme starten möchte, baut wie oben selbst aus dem Quellcode.
+```bash
+git tag v0.2.1 && git push origin v0.2.1
+```
+
+Weil die App nicht von Apple notarisiert ist (das kostet 99 $ im Jahr), muss man sie beim ersten Mal per Rechtsklick → **Öffnen** starten oder einmal `xattr -dr com.apple.quarantine "/Applications/Claude Notch.app"` ausführen. Die Zeile im Schnellstart erledigt das schon. Wer keine fremden Programme starten möchte, baut wie oben selbst aus dem Quellcode.
 
 ## Sicherheit
 
