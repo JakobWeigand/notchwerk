@@ -28,7 +28,18 @@ Weitere Punkte
 * Alles einstellbar über das ✦ Symbol in der Menüleiste. Dort gibt es auch **Demo abspielen**, um alle Animationen ohne Claude zu sehen.
 * Wenn die App nicht läuft, merkt Claude Code nichts davon und fragt ganz normal im Terminal.
 
-## Installation nur für dich (empfohlen)
+## Schnellstart ohne Kompilieren
+
+1. Unter **Releases** die neueste `ClaudeNotch.zip` herunterladen (im Browser bei GitHub angemeldet sein).
+2. Terminal öffnen und diese eine Zeile einfügen
+   ```bash
+   cd ~/Downloads && { [ -d "Claude Notch.app" ] || ditto -x -k ClaudeNotch.zip .; } && rm -rf "/Applications/Claude Notch.app" && mv "Claude Notch.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Claude Notch.app" && open "/Applications/Claude Notch.app"
+   ```
+3. Im Fenster „Mit Claude Code verbinden?“ auf **Verbinden** klicken.
+
+Die App startet ab jetzt automatisch beim Anmelden.
+
+## Installation aus dem Quellcode
 
 Du baust die App selbst aus dem Quellcode. Das kostet nichts und macOS zeigt keine Warnung, weil die App auf deinem Mac entstanden ist.
 
