@@ -10,6 +10,10 @@ Notchwerk ist eine kleine, kostenlose Mac App für die Menüleiste. Sie zeigt di
 
 > Inoffizielles Hobbyprojekt. Nicht von Anthropic und nicht mit Anthropic verbunden. „Claude“ und „Claude Code“ sind Marken von Anthropic, PBC und werden hier nur beschreibend genannt, weil die App mit Claude Code zusammenarbeitet. Lizenz: MIT, ohne Gewähr (siehe `LICENSE`).
 
+## Über dieses Projekt
+
+Notchwerk ist ein privates Hobbyprojekt von Jakob Weigand. Es ist kostenlos, verfolgt kein kommerzielles Interesse und wird in der Freizeit gepflegt, ohne Zusage, wie schnell Fehler behoben werden. Fragen, Fehler und Ideen bitte als [Issue auf GitHub](https://github.com/JakobWeigand/notchwerk/issues). Wer die App weiterentwickeln möchte, forkt das Repo einfach (MIT-Lizenz) oder schickt einen Pull Request.
+
 ## Was die App kann
 
 | Zustand | Am Notch | Auf Bildschirmen ohne Notch |
@@ -38,7 +42,10 @@ Weitere Punkte
 
 ## Schnellstart ohne Kompilieren
 
-1. Unter [Releases](https://github.com/JakobWeigand/notchwerk/releases/latest) die neueste `Notchwerk.zip` herunterladen.
+1. Unter [Releases](https://github.com/JakobWeigand/notchwerk/releases/latest) die neueste `Notchwerk.zip` herunterladen. Wer sichergehen will, lädt auch `Notchwerk.zip.sha256` daneben und prüft im Terminal, dass der Download unversehrt ist:
+   ```bash
+   cd ~/Downloads && shasum -a 256 -c Notchwerk.zip.sha256
+   ```
 2. Terminal öffnen und diese eine Zeile einfügen
    ```bash
    cd ~/Downloads && { [ -d "Notchwerk.app" ] || ditto -x -k Notchwerk.zip .; } && rm -rf "/Applications/Notchwerk.app" "/Applications/Notchwerk.app" && mv "Notchwerk.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Notchwerk.app" && open "/Applications/Notchwerk.app"
@@ -46,6 +53,26 @@ Weitere Punkte
 3. Im Fenster „Mit Claude Code verbinden?“ auf **Verbinden** klicken.
 
 Die App startet ab jetzt automatisch beim Anmelden.
+
+## Was die App auf deinem Mac verändert
+
+Damit du vor dem Installieren weißt, worauf du dich einlässt. Alles davon lässt sich mit `./scripts/uninstall.sh` (oder von Hand) rückstandslos entfernen.
+
+| Was | Wo | Wann | Wieder weg mit |
+|---|---|---|---|
+| Die App selbst | `/Applications/Notchwerk.app` | beim Installieren | in den Papierkorb ziehen |
+| Hook-Skript, Port und Token | `~/.claude-notch/` (nur für dich lesbar) | beim Verbinden bzw. bei jedem App-Start | Ordner löschen |
+| Hook-Einträge | `~/.claude/settings.json` (vorher Sicherung `settings.json.claude-notch-backup`) | nur nach deinem Klick auf **Verbinden** | Menü → **Verbindung entfernen** oder `uninstall.sh` |
+| Anmeldeobjekt | Systemeinstellungen → Anmeldeobjekte | erst nach **Verbinden** | Menü → **Beim Anmelden starten** abwählen |
+| Einstellungen | `defaults` unter `io.github.jakobweigand.claude-notch` | beim ersten Ändern | `uninstall.sh` |
+
+Dialoge, die macOS zeigen kann, und was sie bedeuten:
+
+* **„Notchwerk möchte Terminal steuern“**: nur wenn du eine Terminal-Sitzung in der Liste anklickst, damit die App den richtigen Tab nach vorn holt. Ablehnen ist folgenlos, dann wird nur das Terminal aktiviert.
+* **„Notchwerk möchte deine vertraulichen Informationen in ‚Claude Code-credentials‘ verwenden“**: nur wenn du die Nutzungsanzeige in den Einstellungen eingeschaltet hast (Standard aus). Siehe Sicherheit.
+* **Gatekeeper-Warnung** beim ersten Start: weil die App nicht bei Apple notarisiert ist. Die Zeile im Schnellstart hebt die Sperre nur für diese eine App auf. Wer das nicht möchte, baut selbst aus dem Quellcode.
+
+Was die App nie tut: ins Netz gehen (außer der optionalen Nutzungsanzeige), Dateien deiner Projekte lesen oder ändern, Freigaben ohne deinen Klick erteilen, im Hintergrund weiterlaufen, wenn du sie beendest. Läuft sie nicht oder stürzt sie ab, merkt Claude Code nur eine Sekunde Verzögerung pro Ereignis und fragt wie gewohnt im Terminal.
 
 ## Installation aus dem Quellcode
 
