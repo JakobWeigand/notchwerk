@@ -12,20 +12,40 @@ BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 ARGS=(-c release)
 for arch in ${ARCHS:-}; do ARGS+=(--arch "$arch"); done
 
-echo "▸ Baue Notchwerk $VERSION …"
-if ! swift build "${ARGS[@]}"; then
-  # Nur Command Line Tools, kein Xcode: Das neueste SDK verlangt ein SwiftUI-Makro-Plugin,
-  # das erst Xcode mitbringt. Mit dem vorherigen SDK klappt es.
-  for sdk in $(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk 2>/dev/null | sort -r); do
-    echo "▸ Erneut mit $(basename "$sdk") …"
-    ARGS+=(--scratch-path ".build/$(basename "$sdk")")
+# Nur Command Line Tools, kein Xcode? Deren neuestes SDK verlangt ein SwiftUI-Makro-Plugin,
+# das erst Xcode mitbringt. Dann gleich das vorherige SDK nehmen, statt erst in den Fehler zu laufen.
+DEV="$(xcode-select -p 2>/dev/null || true)"
+if [ -z "${SDKROOT:-}" ] && [ "$DEV" = "/Library/Developer/CommandLineTools" ] \
+   && [ ! -f "$DEV/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib" ]; then
+  for sdk in $(ls -d "$DEV"/SDKs/MacOSX26*.sdk 2>/dev/null | sort -r); do
     export SDKROOT="$sdk"
-    swift build "${ARGS[@]}" && break
-    unset SDKROOT
+    ARGS+=(--scratch-path ".build/$(basename "$sdk")")
+    echo "▸ Command Line Tools ohne Xcode erkannt, nutze $(basename "$sdk")"
+    break
+  done
+fi
+
+echo "▸ Baue Notchwerk $VERSION …"
+LOG="$(mktemp -t notchwerk-build)"
+if ! swift build "${ARGS[@]}" >"$LOG" 2>&1; then
+  # Letzter Versuch mit den anderen verfügbaren SDKs.
+  OK=""
+  for sdk in $(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk 2>/dev/null | sort -r); do
+    [ "${SDKROOT:-}" = "$sdk" ] && continue
+    echo "▸ Erneut mit $(basename "$sdk") …"
+    export SDKROOT="$sdk"
+    ARGS+=(--scratch-path ".build/$(basename "$sdk")")
+    if swift build "${ARGS[@]}" >"$LOG" 2>&1; then OK=1; break; fi
     unset 'ARGS[-1]'; unset 'ARGS[-1]'
   done
-  [ -n "${SDKROOT:-}" ] || { echo "✗ Build fehlgeschlagen"; exit 1; }
+  if [ -z "$OK" ]; then
+    cat "$LOG"
+    echo "✗ Build fehlgeschlagen. Mit Xcode (kostenlos im App Store) klappt es in jedem Fall."
+    exit 1
+  fi
 fi
+grep -E "Compiling|Build complete" "$LOG" | tail -1
+rm -f "$LOG"
 BIN="$(swift build "${ARGS[@]}" --show-bin-path)/Notchwerk"
 
 APP="dist/Notchwerk.app"
