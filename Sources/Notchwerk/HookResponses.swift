@@ -94,7 +94,8 @@ enum ToolDescriber {
         default:
             if let data = try? JSONSerialization.data(withJSONObject: input, options: [.sortedKeys, .withoutEscapingSlashes]),
                let text = String(data: data, encoding: .utf8) {
-                return String(text.prefix(400))
+                // Gekürzt nur mit sichtbarem „…“, damit nie ein Teil unbemerkt fehlt.
+                return text.count > 400 ? String(text.prefix(400)) + "…" : text
             }
             return short(tool: tool, input: input)
         }

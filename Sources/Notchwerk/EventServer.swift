@@ -14,6 +14,7 @@ final class EventServer {
     private let queue = DispatchQueue(label: "claude-notch.server")
     private let token: String
     private let maxBody = 16 * 1024 * 1024
+    private let maxHead = 16 * 1024
 
     init(token: String) {
         self.token = token
@@ -49,37 +50,55 @@ final class EventServer {
         receive(conn, buffer: Data())
     }
 
-    private func receive(_ conn: NWConnection, buffer: Data) {
+    private func receive(_ conn: NWConnection, buffer: Data, head: HTTPRequest.Head? = nil) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             var buffer = buffer
             if let data { buffer.append(data) }
-            if buffer.count > self.maxBody {
-                self.respond(conn, status: "413 Payload Too Large", body: nil)
-                return
+            var head = head
+            if head == nil {
+                switch HTTPRequest.parseHead(buffer) {
+                case .incomplete:
+                    if buffer.count > self.maxHead {
+                        self.respond(conn, status: "431 Request Header Fields Too Large", body: nil)
+                        return
+                    }
+                case .invalid:
+                    self.respond(conn, status: "400 Bad Request", body: nil)
+                    return
+                case .complete(let parsed):
+                    // Pfad, Token und Größe prüfen, bevor auch nur ein Byte vom Inhalt gepuffert wird.
+                    if let status = self.reject(parsed) {
+                        self.respond(conn, status: status, body: nil)
+                        return
+                    }
+                    head = parsed
+                }
             }
-            if let request = HTTPRequest.parse(buffer) {
-                self.handle(request, conn: conn)
+            if let head, let body = head.body(in: buffer) {
+                self.handle(head, body: body, conn: conn)
                 return
             }
             if isComplete || error != nil {
                 conn.cancel()
                 return
             }
-            self.receive(conn, buffer: buffer)
+            self.receive(conn, buffer: buffer, head: head)
         }
     }
 
-    private func handle(_ request: HTTPRequest, conn: NWConnection) {
-        guard request.method == "POST", request.path == "/event" else {
-            respond(conn, status: "404 Not Found", body: nil)
-            return
+    /// Statuszeile für eine Anfrage, die abgewiesen wird, sonst nil.
+    private func reject(_ head: HTTPRequest.Head) -> String? {
+        guard head.method == "POST", head.path == "/event" else { return "404 Not Found" }
+        guard let given = head.headers["x-claude-notch-token"], constantTimeEqual(given, token) else {
+            return "401 Unauthorized"
         }
-        guard let given = request.headers["x-claude-notch-token"], constantTimeEqual(given, token) else {
-            respond(conn, status: "401 Unauthorized", body: nil)
-            return
-        }
-        guard let obj = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] else {
+        guard head.contentLength <= maxBody else { return "413 Payload Too Large" }
+        return nil
+    }
+
+    private func handle(_ request: HTTPRequest.Head, body: Data, conn: NWConnection) {
+        guard let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
             respond(conn, status: "400 Bad Request", body: nil)
             return
         }
@@ -159,20 +178,36 @@ final class OnceFlag {
     }
 }
 
-struct HTTPRequest {
-    let method: String
-    let path: String
-    let headers: [String: String]
-    let body: Data
+enum HTTPRequest {
+    /// Kopfzeilen einer Anfrage. Der Inhalt folgt ab `bodyOffset` mit genau `contentLength` Bytes.
+    struct Head {
+        let method: String
+        let path: String
+        let headers: [String: String]
+        let contentLength: Int
+        let bodyOffset: Int
 
-    /// Liefert nil solange die Anfrage noch nicht vollständig ist.
-    static func parse(_ data: Data) -> HTTPRequest? {
+        /// Der Inhalt, sobald er vollständig im Puffer liegt, sonst nil.
+        func body(in data: Data) -> Data? {
+            let start = data.startIndex + bodyOffset
+            guard data.endIndex - start >= contentLength else { return nil }
+            return data.subdata(in: start..<(start + contentLength))
+        }
+    }
+
+    enum HeadResult {
+        case incomplete
+        case invalid
+        case complete(Head)
+    }
+
+    static func parseHead(_ data: Data) -> HeadResult {
         let separator = Data("\r\n\r\n".utf8)
-        guard let range = data.range(of: separator) else { return nil }
-        guard let headText = String(data: data[data.startIndex..<range.lowerBound], encoding: .utf8) else { return nil }
+        guard let range = data.range(of: separator) else { return .incomplete }
+        guard let headText = String(data: data[data.startIndex..<range.lowerBound], encoding: .utf8) else { return .invalid }
         let lines = headText.components(separatedBy: "\r\n")
         let parts = lines.first?.split(separator: " ") ?? []
-        guard parts.count >= 2 else { return nil }
+        guard parts.count >= 2 else { return .invalid }
         var headers: [String: String] = [:]
         for line in lines.dropFirst() {
             guard let idx = line.firstIndex(of: ":") else { continue }
@@ -180,11 +215,12 @@ struct HTTPRequest {
             let value = line[line.index(after: idx)...].trimmingCharacters(in: .whitespaces)
             headers[key] = value
         }
-        let length = Int(headers["content-length"] ?? "0") ?? 0
-        let bodyStart = range.upperBound
-        guard data.count - (bodyStart - data.startIndex) >= length else { return nil }
-        let body = data.subdata(in: bodyStart..<(bodyStart + length))
-        return HTTPRequest(method: String(parts[0]), path: String(parts[1]), headers: headers, body: body)
+        // Nur reine Ziffern: ein negativer oder unsinniger Wert ließ die App früher abstürzen.
+        let rawLength = headers["content-length"] ?? "0"
+        guard !rawLength.isEmpty, rawLength.utf8.count <= 10, rawLength.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let length = Int(rawLength) else { return .invalid }
+        return .complete(Head(method: String(parts[0]), path: String(parts[1]), headers: headers,
+                              contentLength: length, bodyOffset: range.upperBound - data.startIndex))
     }
 }
 

@@ -631,10 +631,22 @@ private struct SessionRow: View {
     }
 }
 
+/// Meldet, ob ein Text im Kasten abgeschnitten wird.
+private struct TruncationKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
 private struct RequestView: View {
     let request: PendingRequest
     let more: Int
     let answer: (PendingRequest.Answer) -> Void
+    /// Erlauben erst kurz nach dem Erscheinen, damit ein Klick, der eigentlich woanders hin
+    /// sollte, nichts freigibt. Die Ansicht entsteht pro Anfrage neu (.id), also auch pro Anfrage.
+    @State private var armed = false
+    /// Passt der Befehl nicht ganz in den Kasten, wird im Notch nichts erlaubt: Erlauben gälte
+    /// sonst auch für den Teil, den man hier nicht sieht.
+    @State private var truncated = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -642,14 +654,28 @@ private struct RequestView: View {
             switch request.kind {
             case .permission(_, let summary, let canAlwaysAllow):
                 codeBox(summary)
+                    .onPreferenceChange(TruncationKey.self) { truncated = $0 }
                 HStack(spacing: 8) {
                     NotchButton("Ablehnen", role: .deny) { answer(.deny) }
                     NotchButton("Im Terminal", role: .ghost) { answer(.terminal) }
                     Spacer(minLength: 0)
-                    if canAlwaysAllow {
-                        NotchButton("Immer erlauben", role: .secondary) { answer(.allowAlways) }
+                    if truncated {
+                        Text("Zu lang zum Prüfen, bitte im Terminal")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                    } else {
+                        if canAlwaysAllow {
+                            NotchButton("Immer erlauben", role: .secondary) { answer(.allowAlways) }
+                                .disabled(!armed).opacity(armed ? 1 : 0.5)
+                        }
+                        NotchButton("Erlauben", role: .primary) { answer(.allow) }
+                            .disabled(!armed).opacity(armed ? 1 : 0.5)
                     }
-                    NotchButton("Erlauben", role: .primary) { answer(.allow) }
+                }
+                .task {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    armed = true
                 }
             case .notice(_, let message):
                 Text(message.isEmpty ? "Schau kurz bei Claude vorbei." : message)
@@ -696,12 +722,25 @@ private struct RequestView: View {
     }
 
     private func codeBox(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11.5, design: .monospaced))
+        let font = Font.system(size: 11.5, design: .monospaced)
+        return Text(text)
+            .font(font)
             .foregroundStyle(Theme.cream.opacity(0.92))
             .lineLimit(3)
             .truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Abgeschnitten? Die sichtbare Höhe mit der Höhe des ganzen Textes vergleichen.
+            .background(GeometryReader { shown in
+                Text(text)
+                    .font(font)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: shown.size.width, alignment: .leading)
+                    .hidden()
+                    .background(GeometryReader { full in
+                        Color.clear.preference(key: TruncationKey.self,
+                                               value: full.size.height > shown.size.height + 1)
+                    })
+            })
             .padding(.horizontal, 10).padding(.vertical, 8)
             .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.07)))
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.orange.opacity(0.25), lineWidth: 1))

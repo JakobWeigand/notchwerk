@@ -136,7 +136,11 @@ struct ClaudeAccount: Codable, Identifiable, Hashable {
         try fm.createDirectory(at: HookInstaller.dir, withIntermediateDirectories: true,
                                attributes: [.posixPermissions: 0o700])
         let file = HookInstaller.dir.appendingPathComponent("anmelden-\(Self.slug(name).isEmpty ? "konto" : Self.slug(name)).command")
-        let label = name.replacingOccurrences(of: "\"", with: "")
+        // Der Name landet in einem Shell-Skript (er kann auch aus einem Ordnernamen stammen):
+        // ohne Steuerzeichen, damit kein Zeilenumbruch den Kommentar verlässt, und für echo in
+        // einfachen Anführungszeichen, damit $(…) oder `…` darin nie ausgeführt wird.
+        let label = String(String.UnicodeScalarView(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
+        let quoted = "'" + label.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let script = """
         #!/bin/zsh
         # Von Notchwerk angelegt: startet Claude Code mit dem Konto „\(label)“.
@@ -147,7 +151,7 @@ struct ClaudeAccount: Codable, Identifiable, Hashable {
           read -k 1 "?Taste drücken zum Schließen …"
           exit 1
         fi
-        echo "Claude Code mit dem Konto „\(label)“ ($CLAUDE_CONFIG_DIR)."
+        echo "Claude Code mit dem Konto „"\(quoted)"“ ($CLAUDE_CONFIG_DIR)."
         echo "Falls Claude Code nicht von selbst nach der Anmeldung fragt: /login eingeben."
         echo
         exec claude

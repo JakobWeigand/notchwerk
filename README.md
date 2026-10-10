@@ -117,7 +117,7 @@ xcode-select --install
 
 # 2. Projekt holen und installieren
 git clone https://github.com/JakobWeigand/notchwerk.git
-cd claude-notch
+cd notchwerk
 ./scripts/install.sh
 ```
 
@@ -149,6 +149,8 @@ Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins I
 * Läuft die App nicht oder antwortest du nicht innerhalb der Wartezeit (Standard 10 Minuten), gibt der Hook keine Entscheidung zurück. Claude Code fragt dann wie gewohnt im Terminal. Es wird also nie automatisch etwas erlaubt.
 * Im öffentlichen Repository liegen keine Geheimnisse. Jeder Nutzer bekommt seinen eigenen Token.
 * „Immer erlauben“ übernimmt genau die Regel, die Claude Code selbst vorschlägt.
+* Passt ein Befehl nicht vollständig in die Karte am Notch, gibt es dort kein **Erlauben**, nur **Ablehnen** und **Im Terminal**. So wird nie etwas freigegeben, das man nicht ganz gesehen hat. Die Erlauben-Knöpfe reagieren außerdem erst kurz nach dem Aufklappen, damit ein Klick, der eigentlich der Menüleiste galt, nichts freigibt.
+* Anfragen ohne gültigen Token weist die App ab, bevor sie deren Inhalt überhaupt annimmt.
 * Die **Nutzungsanzeige** und die **Widgets** sind standardmäßig aus. Schaltest du sie ein, liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“, bei weiteren Konten mit einer Endung je Ordner) und fragt nur die Limits bei `api.anthropic.com` ab, dieselbe Stelle wie `/usage` in Claude Code. macOS fragt dabei nach; mit **Immer erlauben** nie wieder. Nur für die Anzeige abgefragt wird beim Öffnen der Liste; mit Widgets zusätzlich im Hintergrund im eingestellten Abstand (frühestens alle 10 Minuten, bei einer Sperre durch den Server automatisch seltener). Der Token bleibt nur im Arbeitsspeicher. Auf die Platte kommen nur die Prozentwerte für die Widgets. Beachte: Anthropic sieht den Login-Token laut seinen Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, du nutzt sie auf eigene Verantwortung.
 
 ## Datenschutz

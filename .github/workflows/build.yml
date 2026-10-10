@@ -20,6 +20,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Der Token mit Schreibrechten bleibt nicht in .git/config liegen, solange gebaut wird.
+          persist-credentials: false
 
       - name: Swift Version
         run: swift --version
