@@ -114,6 +114,8 @@ struct SettingsView: View {
                 }
             }
 
+            KeepAwakeSection(prefs: prefs)
+
             Section("Sonstiges") {
                 Toggle("Begrüßung beim Start der Claude App", isOn: $prefs.greetOnClaudeLaunch)
                 Toggle("Töne", isOn: $prefs.playSounds)
@@ -138,6 +140,8 @@ struct SettingsView: View {
                     Text(errorText).foregroundStyle(.red).font(.callout)
                 }
             }
+
+            AdvancedSection(prefs: prefs)
         }
         .formStyle(.grouped)
         .frame(width: 500)
@@ -492,8 +496,16 @@ private struct UpdatesSection: View {
                     .keyboardShortcut(updater.isAvailable ? .defaultAction : .none)
             }
             Toggle("Einmal am Tag automatisch nachsehen", isOn: Binding(
-                get: { prefs.autoCheckUpdates },
+                get: { prefs.autoCheckUpdates || prefs.autoInstallUpdates },
                 set: { prefs.autoCheckUpdates = $0; updater.configureTimer() }))
+                .disabled(prefs.autoInstallUpdates)
+                .help(prefs.autoInstallUpdates ? "Läuft, solange „Updates automatisch installieren“ unter Erweitert an ist." : "")
+            if prefs.autoInstallUpdates {
+                Label(updater.autoInstallNote ?? "Updates werden automatisch installiert (siehe Erweitert)",
+                      systemImage: "arrow.triangle.2.circlepath")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Button(isProject ? "Anderen Projektordner wählen …" : "Projektordner wählen …", action: pickFolder)
                 if isProject {
@@ -561,5 +573,198 @@ private struct UpdatesSection: View {
             alert.informativeText = "In \(url.path) fehlen .git, Package.swift oder scripts/build-app.sh."
             alert.runModal()
         }
+    }
+}
+
+// MARK: - Mac wach halten
+
+private struct KeepAwakeSection: View {
+    @ObservedObject var prefs: Preferences
+    @ObservedObject private var keepAwake = KeepAwake.shared
+
+    var body: some View {
+        Section("Mac wach halten") {
+            Picker("Mac wach halten", selection: $prefs.keepAwake) {
+                ForEach(Preferences.KeepAwake.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            if prefs.keepAwake != .off {
+                Label(keepAwake.active ? (keepAwake.displayActive ? "Hält gerade Mac und Bildschirm wach" : "Hält den Mac gerade wach")
+                                       : "Gerade nicht nötig, der Mac darf schlafen",
+                      systemImage: keepAwake.active ? "cup.and.saucer.fill" : "moon.zzz")
+                    .foregroundStyle(keepAwake.active ? Theme.orange : Color.secondary)
+            }
+            Text("„Solange Claude arbeitet“ gilt auch, solange eine Sitzung auf das Zurücksetzen ihres Limits wartet oder eine geplante Nachricht offen ist, und noch zwei Minuten danach. So kann Claude Code nach dem Limit von selbst weitermachen. Der Bildschirm geht trotzdem aus und sperrt sich wie gewohnt. Zugeklappt und ohne externen Bildschirm schläft ein MacBook trotzdem ein. Am Akku kostet Wachhalten Strom.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Erweitert
+
+/// Funktionen mit kleinen Sicherheitsrisiken. Standardmäßig aus, eine Ebene tiefer, und jede erst
+/// nach einer Bestätigung, die das Risiko vollständig zeigt.
+private struct AdvancedSection: View {
+    @ObservedObject var prefs: Preferences
+    @State private var expanded = false
+
+    var body: some View {
+        Section {
+            DisclosureGroup(isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Diese Funktionen sind praktisch, haben aber jeweils ein kleines Risiko. Lies vor dem Einschalten, was passieren kann. Alle sind standardmäßig aus.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    RiskyToggle(
+                        title: "Updates automatisch installieren",
+                        isOn: Binding(get: { prefs.autoInstallUpdates },
+                                      set: { prefs.autoInstallUpdates = $0; Updater.shared.configureTimer() }),
+                        risks: [
+                            "Neue Versionen laufen, ohne dass du sie vorher siehst. Würde das GitHub-Konto des Projekts oder der Build-Vorgang übernommen, käme eine manipulierte Version automatisch auf deinen Mac und liefe mit deinen Rechten. Sie könnte zum Beispiel Freigaben erteilen oder Dateien lesen.",
+                            "Die Prüfsumme liegt im selben Release und schützt nur vor kaputten Downloads, nicht vor einem übernommenen Konto. Die Signatur ist ad hoc und beweist keine Herkunft.",
+                            "Beim Bauen aus dem Projektordner führt die App neuen Code von GitHub (Package.swift, build-app.sh) ohne Rückfrage aus.",
+                            "Ist die Nutzungsanzeige an, fragt macOS nach einem Update erneut nach dem Schlüsselbund.",
+                        ],
+                        safeguards: [
+                            "Nur über HTTPS, nur von github.com/JakobWeigand/notchwerk, nur fertige Releases, keine Vorabversionen.",
+                            "Frühestens 24 Stunden nach Erscheinen, damit ein fehlerhaftes oder untergeschobenes Release vorher auffallen kann.",
+                            "Prüfsumme und Signatur müssen stimmen, die Version im Download muss zum Release passen und neuer sein.",
+                            "Nur wenn keine Sitzung arbeitet, keine Freigabe offen ist und keine Nachricht geplant ist.",
+                            "Projektordner: nur ohne ungesicherte Änderungen und nur per git pull --ff-only.",
+                            "Nach dem Neustart zeigt der Notch, von welcher auf welche Version aktualisiert wurde. Protokoll in ~/.claude-notch/update.log.",
+                        ])
+
+                    RiskyToggle(
+                        title: "Beim Wachhalten auch den Bildschirm anlassen",
+                        isOn: $prefs.keepDisplayAwake,
+                        risks: [
+                            "Solange der Mac wach gehalten wird, geht der Bildschirm nicht aus und der Mac sperrt sich nicht von selbst.",
+                            "Wer in der Zeit an deinen Mac kommt, kann ihn benutzen, auch Freigaben im Notch erteilen oder Claude Anweisungen geben. Im Büro oder mit Kundendaten auf dem Bildschirm ist das heikel.",
+                        ],
+                        safeguards: [
+                            "Gilt nur, solange „Mac wach halten“ greift. Mit „Solange Claude arbeitet“ ist danach alles wie gewohnt.",
+                            "Von Hand sperren geht weiterhin jederzeit mit ⌃⌘Q.",
+                        ])
+                    if prefs.keepDisplayAwake && prefs.keepAwake == .off {
+                        Text("Wirkt erst, wenn oben „Mac wach halten“ eingeschaltet ist.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    RiskyToggle(
+                        title: "Nachrichten an Claude planen (z.B. nach dem Limit)",
+                        isOn: Binding(get: { prefs.followUpsEnabled },
+                                      set: { on in
+                                          prefs.followUpsEnabled = on
+                                          if !on { FollowUps.shared.cancelAll() }
+                                      }),
+                        risks: [
+                            "Claude arbeitet weiter, während du nicht da bist, mit allem, was die Sitzung darf: „Immer erlauben“-Regeln und der Berechtigungsmodus gelten weiter. Fehler oder ungewollte Änderungen bemerkst du erst später.",
+                            "Wer an deinem entsperrten Mac sitzt, kann über den Notch eine Nachricht planen.",
+                        ],
+                        safeguards: [
+                            "Der Text geht nur als Anweisung an Claude Code (über den Stop-Hook), nie an ein Terminal oder eine Shell.",
+                            "Zugestellt wird erst, wenn die Sitzung das nächste Mal fertig ist. Freigaben, nach denen Claude Code fragt, brauchen weiter deinen Klick.",
+                            "Je Sitzung höchstens eine Nachricht, höchstens 4000 Zeichen, nur im Arbeitsspeicher, verfällt nach 24 Stunden, jederzeit löschbar.",
+                        ],
+                        hint: "Planen über das Sprechblasen-Symbol neben einer Sitzung in der Liste oder über „Nachricht für danach“, wenn ein Limit erreicht ist. Claude Code macht nach dem Zurücksetzen des Limits von selbst weiter; danach bekommt Claude deine Nachricht.")
+
+                    RiskyToggle(
+                        title: "Claude im Notch antworten",
+                        isOn: Binding(get: { prefs.replyInNotch },
+                                      set: { on in
+                                          prefs.replyInNotch = on
+                                          if on { HookInstaller.refreshOutdated() }
+                                      }),
+                        risks: [
+                            "Wenn Claude fertig ist, hält die App Claude Code kurz fest, damit du im Notch antworten kannst. In der Zeit wartet das Terminal.",
+                            "Claudes letzte Antwort erscheint über allen Fenstern, auch beim Teilen des Bildschirms oder in einer Präsentation.",
+                            "Wer an deinem entsperrten Mac sitzt, kann Claude von jeder App aus Anweisungen geben.",
+                        ],
+                        safeguards: [
+                            "Das Eingabefeld bekommt nie von selbst den Fokus. Erst ein Klick hinein nimmt Tastatureingaben an.",
+                            "„Fertig“ gibt Claude Code sofort frei, nach Ablauf der Wartezeit geht es von selbst weiter.",
+                            "Der Text geht nur als Anweisung an Claude Code, nie an eine Shell, und nur über den lokalen Server mit Token.",
+                        ])
+                    if prefs.replyInNotch {
+                        Picker("Claude wartet auf eine Antwort", selection: $prefs.replyWindow) {
+                            ForEach(Preferences.replyWindowChoices, id: \.self) { seconds in
+                                Text(seconds < 60 ? "\(seconds) Sekunden" : "\(seconds / 60) Minute\(seconds == 60 ? "" : "n")").tag(seconds)
+                            }
+                        }
+                        Text("Wirkt bei laufenden Sitzungen erst nach deren Neustart, weil Claude Code die Hook-Einstellungen beim Start liest.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Text("Erweiterte Einstellungen")
+            }
+        } header: {
+            Text("Erweitert")
+        }
+    }
+}
+
+/// Schalter mit Risiko: zeigt, was passieren kann und wie die App sich schützt. Einschalten erst
+/// nach einer Bestätigung, in der „Abbrechen“ der vorausgewählte Knopf ist.
+private struct RiskyToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+    let risks: [String]
+    let safeguards: [String]
+    var hint: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(title, isOn: Binding(get: { isOn }, set: { on in
+                if on { if confirm() { isOn = true } } else { isOn = false }
+            }))
+            Label("Was passieren kann", systemImage: "exclamationmark.triangle.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.orange)
+                .padding(.top, 2)
+            bullets(risks)
+            Label("Wie Notchwerk sich schützt", systemImage: "checkmark.shield.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.green)
+                .padding(.top, 2)
+            bullets(safeguards)
+            if let hint {
+                Text(hint)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func bullets(_ items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(items, id: \.self) { item in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("•")
+                    Text(item).fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func confirm() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "„\(title)“ einschalten?"
+        alert.informativeText = "Was passieren kann:\n" + risks.map { "• " + $0 }.joined(separator: "\n")
+            + "\n\nSchutz:\n" + safeguards.map { "• " + $0 }.joined(separator: "\n")
+        // „Abbrechen“ zuerst: Er ist der vorausgewählte Knopf, ein schnelles Enter schaltet nichts ein.
+        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: "Einschalten")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertSecondButtonReturn
     }
 }

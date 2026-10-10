@@ -29,11 +29,23 @@ final class Updater: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var lastCheck: Date?
+    /// Automatisches Installieren wartet gerade (auf Ruhe oder auf die Wartezeit nach dem Erscheinen).
+    @Published private(set) var autoInstallNote: String?
 
     private let prefs = Preferences.shared
     private var release: Release?
+    /// Projektordner mit ungesicherten Änderungen: dann nie automatisch bauen.
+    private var projectDirty = false
     private var timer: Timer?
+    private var autoInstallTask: Task<Void, Never>?
     private var started = false
+
+    /// Ein Release wird frühestens so lange nach dem Erscheinen automatisch installiert. Fällt ein
+    /// fehlerhaftes oder untergeschobenes Release auf, ist es bis dahin meist schon zurückgezogen.
+    static let releaseCooldown: TimeInterval = 24 * 3600
+    /// So lange wartet das automatische Installieren höchstens darauf, dass keine Sitzung mehr arbeitet.
+    private static let idleWaitLimit: TimeInterval = 20 * 3600
+    private static let updatedFromKey = "updatedFromVersion"
 
     private init() {}
 
@@ -88,15 +100,34 @@ final class Updater: ObservableObject {
                 prefs.sourceDir = dir
             }
         }
+        announceFinishedUpdate()
         configureTimer()
     }
+
+    /// Nach einem Neustart durch ein Update kurz zeigen, dass und worauf aktualisiert wurde.
+    private func announceFinishedUpdate() {
+        let defaults = UserDefaults.standard
+        guard let from = defaults.string(forKey: Self.updatedFromKey) else { return }
+        defaults.removeObject(forKey: Self.updatedFromKey)
+        let now = builtCommit.map { "\(currentVersion) (\($0))" } ?? currentVersion
+        guard from != now else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            NotchModel.shared.showBanner(Banner(style: .info, title: "Notchwerk aktualisiert",
+                                                subtitle: "Von \(from) auf \(now). Protokoll: ~/.claude-notch/update.log"),
+                                         duration: 6)
+        }
+    }
+
+    /// Täglich nachsehen, wenn nachsehen oder automatisch installieren an ist.
+    private var wantsSchedule: Bool { prefs.autoCheckUpdates || prefs.autoInstallUpdates }
 
     func configureTimer() {
         timer?.invalidate()
         timer = nil
-        guard prefs.autoCheckUpdates else { return }
+        if !prefs.autoInstallUpdates { cancelAutoInstall() }
+        guard wantsSchedule else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-            guard let self, self.prefs.autoCheckUpdates else { return }
+            guard let self, self.wantsSchedule else { return }
             self.check(quietly: true)
         }
         let t = Timer(timeInterval: 24 * 3600, repeats: true) { [weak self] _ in
@@ -125,12 +156,85 @@ final class Updater: ObservableObject {
             } else {
                 phase = result
             }
-            if quietly, case .available(let what) = result {
-                NotchModel.shared.showBanner(Banner(style: .info, title: "Update für Notchwerk",
-                                                    subtitle: "\(what). Im Menü: Jetzt aktualisieren"), duration: 6)
+            if case .available(let what) = result {
+                if prefs.autoInstallUpdates {
+                    scheduleAutoInstall()
+                } else if quietly {
+                    NotchModel.shared.showBanner(Banner(style: .info, title: "Update für Notchwerk",
+                                                        subtitle: "\(what). Im Menü: Jetzt aktualisieren"), duration: 6)
+                }
             }
             then?(result)
         }
+    }
+
+    // MARK: - Automatisch installieren (erweiterte Einstellung)
+
+    /// Wartet, bis das Update installiert werden darf, und installiert es dann ohne Rückfrage:
+    /// - keine Sitzung arbeitet, keine Freigabe ist offen, keine geplante Nachricht wartet
+    ///   (der Neustart würde sie sonst abbrechen),
+    /// - ein Release ist mindestens `releaseCooldown` alt,
+    /// - im Projektordner gibt es keine ungesicherten Änderungen.
+    private func scheduleAutoInstall() {
+        guard autoInstallTask == nil else { return }
+        if case .project = source, projectDirty {
+            autoInstallNote = "Nicht automatisch: ungesicherte Änderungen im Projektordner"
+            return
+        }
+        autoInstallTask = Task { [weak self] in
+            let deadline = Date().addingTimeInterval(Self.idleWaitLimit)
+            while !Task.isCancelled, Date() < deadline {
+                guard let self else { return }
+                guard self.prefs.autoInstallUpdates, self.isAvailable else { break }
+                if let wait = self.cooldownRemaining(), wait > 0 {
+                    self.autoInstallNote = "Wird frühestens \(Self.clock(Date().addingTimeInterval(wait))) installiert (24 Stunden nach Erscheinen)"
+                } else if !Self.isQuiet {
+                    self.autoInstallNote = "Wird installiert, sobald Claude fertig ist"
+                } else {
+                    self.autoInstallNote = nil
+                    self.autoInstallTask = nil
+                    self.log("Automatisches Update startet")
+                    self.update()
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+            }
+            self?.autoInstallTask = nil
+            self?.autoInstallNote = nil
+        }
+    }
+
+    private func cancelAutoInstall() {
+        autoInstallTask?.cancel()
+        autoInstallTask = nil
+        autoInstallNote = nil
+    }
+
+    /// Sekunden, bis das gefundene Release alt genug ist. nil: kein Release (Projektordner).
+    private func cooldownRemaining() -> TimeInterval? {
+        guard case .releases = source, let release else { return nil }
+        // Ohne Datum lieber gar nicht automatisch.
+        guard let published = release.publishedAt else { return .infinity }
+        return published.addingTimeInterval(Self.releaseCooldown).timeIntervalSinceNow
+    }
+
+    /// Nichts läuft, was ein Neustart der App stören würde.
+    private static var isQuiet: Bool {
+        let model = NotchModel.shared
+        return !model.isWorking && !model.needsAttention && model.pending.isEmpty && !FollowUps.shared.hasScheduled
+    }
+
+    private static func clock(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = Calendar.current.isDateInToday(date) ? "'um' HH:mm" : "EEE HH:mm"
+        return f.string(from: date)
+    }
+
+    private func log(_ line: String) {
+        guard let handle = Shell.appendHandle(Self.logURL) else { return }
+        handle.write(Data("\(Date()) \(line)\n".utf8))
+        try? handle.close()
     }
 
     private func checkProject(_ dir: String) async -> Phase {
@@ -147,6 +251,7 @@ final class Updater: ObservableObject {
         let headShort = head.output.trimmingCharacters(in: .whitespacesAndNewlines)
         let status = await Shell.run(["git", "status", "--porcelain", "--untracked-files=no"], in: dir)
         let dirty = !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        projectDirty = dirty
 
         let built = builtCommit ?? ""
         let builtBase = built.replacingOccurrences(of: "-dirty", with: "")
@@ -240,6 +345,12 @@ final class Updater: ObservableObject {
         guard unpack.ok else { throw UpdateError("Entpacken ging nicht: \(unpack.lastLine)") }
         let app = work.appendingPathComponent("Notchwerk.app")
         try await verify(app)
+        // Die App im Zip muss genau die Version des Releases sein und neuer als die laufende.
+        // So lässt sich keine ältere (vielleicht fehlerhafte) Version als Update unterschieben.
+        let inside = Bundle(url: app)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        guard inside == rel.version, Release.isNewer(inside, than: currentVersion) else {
+            throw UpdateError("Version im Download (\(inside.isEmpty ? "unbekannt" : inside)) passt nicht zum Release \(rel.tag)")
+        }
         return app
     }
 
@@ -276,6 +387,8 @@ final class Updater: ObservableObject {
             process.standardError = log
         }
         try process.run()
+        UserDefaults.standard.set(builtCommit.map { "\(currentVersion) (\($0))" } ?? currentVersion,
+                                  forKey: Self.updatedFromKey)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { NSApp.terminate(nil) }
     }
 
@@ -317,6 +430,8 @@ final class Updater: ObservableObject {
 struct Release {
     let tag: String
     let assets: [String: URL]
+    /// Wann das Release erschienen ist. Automatisch installiert wird erst mit Abstand, siehe Updater.
+    let publishedAt: Date?
 
     /// „v0.4.0“ → „0.4.0“
     var version: String { tag.hasPrefix("v") ? String(tag.dropFirst()) : tag }
@@ -329,17 +444,24 @@ struct Release {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200,
               let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = obj["tag_name"] as? String else {
+              let tag = obj["tag_name"] as? String,
+              // Nur echte Versionsnummern wie v0.7.0, nichts, was sich als Pfad oder Text ausnutzen ließe.
+              tag.range(of: #"^v?[0-9]{1,4}(\.[0-9]{1,4}){1,3}$"#, options: .regularExpression) != nil,
+              obj["draft"] as? Bool != true, obj["prerelease"] as? Bool != true else {
             throw Updater.UpdateError("Antwort von GitHub unerwartet")
         }
+        // Downloads nur von genau diesem Release dieses Repositorys.
+        let prefix = "/\(repository)/releases/download/\(tag)/"
         var assets: [String: URL] = [:]
         for asset in obj["assets"] as? [[String: Any]] ?? [] {
             if let name = asset["name"] as? String, let link = asset["browser_download_url"] as? String,
-               let url = URL(string: link), url.scheme == "https" {
+               let url = URL(string: link), url.scheme == "https", url.host == "github.com",
+               url.path.hasPrefix(prefix) {
                 assets[name] = url
             }
         }
-        return Release(tag: tag, assets: assets)
+        let published = (obj["published_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+        return Release(tag: tag, assets: assets, publishedAt: published)
     }
 
     /// Vergleicht Versionen Zahl für Zahl: 0.10.0 ist neuer als 0.9.3.

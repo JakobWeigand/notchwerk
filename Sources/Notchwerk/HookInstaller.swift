@@ -22,14 +22,21 @@ enum HookInstaller {
         ("PostToolUse", 2, 5),
         ("PermissionRequest", 3590, 3600),
         ("Notification", 2, 5),
-        ("Stop", 2, 5),
+        // Stop darf warten: auf eine Antwort im Notch (erweiterte Einstellung). Die App antwortet sofort,
+        // wenn das aus ist; hook.sh hebt die Wartezeit nur für Stop an, siehe dort.
+        ("Stop", 2, stopTimeout),
         ("StopFailure", 2, 5),
         ("SessionEnd", 1, 2),
     ]
 
+    /// Sekunden, die hook.sh bei Stop höchstens auf die App wartet, und die Grenze für Claude Code.
+    /// Muss über der längsten Wahl in `Preferences.replyWindowChoices` liegen.
+    static let stopMaxTime = 320
+    static let stopTimeout = 330
+
     static let script = """
     #!/bin/bash
-    # Notchwerk Hook (Version 3): leitet Claude Code Ereignisse an die Notch App weiter.
+    # Notchwerk Hook (Version 4): leitet Claude Code Ereignisse an die Notch App weiter.
     # Läuft die App nicht, passiert nichts und Claude Code arbeitet ganz normal weiter.
     DIR="$HOME/.claude-notch"
     MAX="${1:-2}"
@@ -39,6 +46,9 @@ enum HookInstaller {
     INPUT="$(cat)"
     # Fragen von Claude (AskUserQuestion) dürfen auf eine Antwort im Notch warten.
     case "$INPUT" in *'"PreToolUse"'*) case "$INPUT" in *'"AskUserQuestion"'*) MAX=3590 ;; esac ;; esac
+    # Am Ende darf die App auf eine Antwort im Notch warten (nur wenn das eingeschaltet ist).
+    # Das Muster trifft auch "Stop" irgendwo im Text; dann darf curl nur länger warten, die App antwortet trotzdem sofort.
+    case "$INPUT" in *'"Stop"'*) MAX=\(stopMaxTime) ;; esac
     # Herkunft: die Prozesskette nach oben. Daran erkennt die App, ob die Sitzung im Terminal,
     # in VS Code oder in der Claude App läuft, und kann beim Klick das richtige Fenster öffnen.
     ORIGIN=""; P=$PPID; set -f
@@ -129,7 +139,7 @@ enum HookInstaller {
                 list.append([
                     "hooks": [[
                         "type": "command",
-                        "command": "\"\(scriptURL.path)\" \(e.maxTime)",
+                        "command": command(maxTime: e.maxTime),
                         "timeout": e.timeout,
                     ]],
                 ])
@@ -147,6 +157,36 @@ enum HookInstaller {
                 hooks[name] = list.isEmpty ? nil : list
             }
         }
+    }
+
+    /// Steht in der settings.json noch ein älterer Eintrag von uns (andere Wartezeiten)?
+    static func isOutdated(in account: ClaudeAccount) -> Bool {
+        guard let data = try? Data(contentsOf: account.settingsURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = root["hooks"] as? [String: Any] else { return false }
+        for e in events {
+            let ours = (hooks[e.name] as? [[String: Any]] ?? []).filter(isOurs)
+            guard let inner = (ours.first?["hooks"] as? [[String: Any]])?.first else { return true }
+            if inner["command"] as? String != command(maxTime: e.maxTime) { return true }
+            if (inner["timeout"] as? NSNumber)?.intValue != e.timeout { return true }
+        }
+        return false
+    }
+
+    /// Nach einem Update der App: unsere Einträge bei den schon verbundenen Konten auf den neuen
+    /// Stand bringen. Fremde Einträge bleiben unberührt, vorher wird wie immer gesichert.
+    @MainActor static func refreshOutdated() {
+        for account in accounts where isInstalled(in: account) && isOutdated(in: account) {
+            do {
+                try install(into: account)
+            } catch {
+                NSLog("Notchwerk: Hook bei \(account.displayPath) nicht aktualisiert: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private static func command(maxTime: Int) -> String {
+        "\"\(scriptURL.path)\" \(maxTime)"
     }
 
     private static func isOurs(_ entry: [String: Any]) -> Bool {

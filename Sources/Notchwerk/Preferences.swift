@@ -60,6 +60,22 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// Den Mac am Einschlafen hindern (wie `caffeinate -i`). Der Bildschirm darf trotzdem ausgehen
+    /// und sperrt sich wie gewohnt, außer `keepDisplayAwake` ist an.
+    enum KeepAwake: String, CaseIterable {
+        case off
+        case whileWorking  // solange Claude arbeitet oder eine geplante Nachricht wartet
+        case always
+
+        var title: String {
+            switch self {
+            case .off: return "Aus"
+            case .whileWorking: return "Solange Claude arbeitet"
+            case .always: return "Dauerhaft"
+            }
+        }
+    }
+
     /// Auswahl für den Abstand unter dem Notch. 1 mm sind auf einem MacBook-Display etwa 5 Punkte.
     static let extensionChoices: [(title: String, value: Double)] = [
         ("Keiner", 0),
@@ -127,6 +143,18 @@ final class Preferences: ObservableObject {
     @Published var sourceDir: String? { didSet { defaults.set(sourceDir, forKey: "sourceDir") } }
     /// Einmal am Tag nachsehen, ob es eine neue Version gibt.
     @Published var autoCheckUpdates: Bool { didSet { defaults.set(autoCheckUpdates, forKey: "autoCheckUpdates") } }
+    /// Erweitert: gefundene Updates ohne Rückfrage installieren, sobald keine Sitzung arbeitet.
+    @Published var autoInstallUpdates: Bool { didSet { defaults.set(autoInstallUpdates, forKey: "autoInstallUpdates") } }
+    /// Mac wach halten: aus, solange Claude arbeitet, dauerhaft.
+    @Published var keepAwake: KeepAwake { didSet { defaults.set(keepAwake.rawValue, forKey: "keepAwake") } }
+    /// Erweitert: dabei auch den Bildschirm anlassen. Dann sperrt sich der Mac nicht von selbst.
+    @Published var keepDisplayAwake: Bool { didSet { defaults.set(keepDisplayAwake, forKey: "keepDisplayAwake") } }
+    /// Erweitert: Nachrichten an Claude planen, die beim nächsten Ende (z.B. nach dem Limit) zugestellt werden.
+    @Published var followUpsEnabled: Bool { didSet { defaults.set(followUpsEnabled, forKey: "followUpsEnabled") } }
+    /// Erweitert: Wenn Claude fertig ist, im Notch eine Antwort schreiben können. Claude Code wartet so lange.
+    @Published var replyInNotch: Bool { didSet { defaults.set(replyInNotch, forKey: "replyInNotch") } }
+    /// Sekunden, die Claude Code nach dem Ende auf eine Antwort im Notch wartet.
+    @Published var replyWindow: Int { didSet { defaults.set(replyWindow, forKey: "replyWindow") } }
 
     static let mascotSizeRange: ClosedRange<Double> = 20...80
     /// Stufen fürs Menü. Klein ist die bisherige Größe.
@@ -163,6 +191,12 @@ final class Preferences: ObservableObject {
             "mascotSize": 24.0,
             "listSize": ListSize.normal.rawValue,
             "autoCheckUpdates": false,
+            "autoInstallUpdates": false,
+            "keepAwake": KeepAwake.off.rawValue,
+            "keepDisplayAwake": false,
+            "followUpsEnabled": false,
+            "replyInNotch": false,
+            "replyWindow": 60,
         ])
         enabled = defaults.bool(forKey: "enabled")
         displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .notch
@@ -191,7 +225,18 @@ final class Preferences: ObservableObject {
         listSize = ListSize(rawValue: defaults.string(forKey: "listSize") ?? "") ?? .normal
         sourceDir = defaults.string(forKey: "sourceDir").flatMap { $0.isEmpty ? nil : $0 }
         autoCheckUpdates = defaults.bool(forKey: "autoCheckUpdates")
+        autoInstallUpdates = defaults.bool(forKey: "autoInstallUpdates")
+        keepAwake = KeepAwake(rawValue: defaults.string(forKey: "keepAwake") ?? "") ?? .off
+        keepDisplayAwake = defaults.bool(forKey: "keepDisplayAwake")
+        followUpsEnabled = defaults.bool(forKey: "followUpsEnabled")
+        replyInNotch = defaults.bool(forKey: "replyInNotch")
+        let window = defaults.integer(forKey: "replyWindow")
+        replyWindow = Self.replyWindowChoices.contains(window) ? window : 60
     }
+
+    /// Wie lange Claude Code nach dem Ende auf eine Antwort im Notch wartet. Höchstens 5 Minuten,
+    /// der Hook gibt nach `HookInstaller.stopMaxTime` ohnehin auf.
+    static let replyWindowChoices = [30, 60, 120, 300]
 
     /// Standardkonto vorn, jeder Ordner nur einmal.
     private static func withDefault(_ list: [ClaudeAccount]) -> [ClaudeAccount] {

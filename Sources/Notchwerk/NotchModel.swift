@@ -21,17 +21,36 @@ struct SessionInfo: Identifiable, Equatable {
     var transcriptSize: UInt64 = 0
     /// Claude Code Konto, mit dem die Sitzung läuft (siehe ClaudeAccount).
     var accountID: String?
+    /// Seit wann die Sitzung am Limit hängt. Claude Code macht nach dem Zurücksetzen von selbst weiter.
+    var limitSince: Date?
+    /// Titel des Chats aus dem Transkript (umbenannt oder von Claude Code vergeben), siehe SessionTitles.
+    var chatTitle: String?
 
+    /// Projektordner, lesbar: „wuerfelbecher-app“ → „Wuerfelbecher App“. Der echte Pfad steht im Tooltip.
     var projectName: String {
         if cwd == FileManager.default.homeDirectoryForCurrentUser.path { return "Home" }
-        let name = (cwd as NSString).lastPathComponent
+        let name = Self.readable((cwd as NSString).lastPathComponent)
         return name.isEmpty ? "Claude Code" : name
+    }
+
+    /// Bindestriche und Unterstriche zu Leerzeichen, jedes Wort mit großem Anfangsbuchstaben.
+    /// Der Rest bleibt, wie er ist (aus „myApp“ wird „MyApp“, nicht „Myapp“).
+    static func readable(_ folder: String) -> String {
+        folder.split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == " " })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 
     /// Name in der Liste: der Chat-Titel aus der Desktop App, sonst der Projektordner.
     var displayName: String {
         if let title = desktop?.title, !title.isEmpty { return title }
         return projectName
+    }
+
+    /// Worum es im Chat geht: der Titel aus der Desktop App, sonst der aus dem Transkript.
+    var title: String? {
+        if let t = desktop?.title, !t.isEmpty { return t }
+        return chatTitle
     }
 
     /// Arbeitet gerade, braucht dich oder ist gerade eben fertig geworden.
@@ -44,6 +63,12 @@ final class PendingRequest: Identifiable {
         case permission(tool: String, summary: String, canAlwaysAllow: Bool)
         case question(QuestionSet)
         case notice(title: String, message: String)
+        /// Limit erreicht. Claude Code macht nach dem Zurücksetzen von selbst weiter.
+        case limit(message: String)
+        /// Claude ist fertig und wartet bis `deadline` auf eine Antwort im Notch (erweitert).
+        case reply(lastMessage: String, deadline: Date)
+        /// Nachricht für später schreiben (erweitert). Kommt von dir, nicht von Claude Code.
+        case compose
     }
 
     enum Answer {
@@ -52,6 +77,8 @@ final class PendingRequest: Identifiable {
         case deny
         case terminal
         case answers([String: String])
+        /// Text an Claude: Antwort im Notch oder geplante Nachricht.
+        case message(String)
     }
 
     let id = UUID()
@@ -117,6 +144,9 @@ final class NotchModel: ObservableObject {
     private var settleTasks: [String: Task<Void, Never>] = [:]
     private var lookupsRunning: Set<String> = []
     private var lookupTimes: [String: Date] = [:]
+    private var titleScans: [String: SessionTitles.State] = [:]
+    private var titleRunning: Set<String> = []
+    private var titleTimes: [String: Date] = [:]
     private var watchdog: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
     private let prefs = Preferences.shared
@@ -145,6 +175,12 @@ final class NotchModel: ObservableObject {
     /// Bekannte Sitzungen, die gerade nichts tun (z.B. offene Chats in der Desktop App).
     var idleCount: Int { sessions.values.filter { !$0.isActive }.count }
     var isWorking: Bool { sessions.values.contains { $0.state == .working } }
+    /// Eine Sitzung wartet auf das Zurücksetzen des Limits (höchstens `limitWaitMax` lang).
+    var hasLimitWait: Bool {
+        sessions.values.contains { s in s.limitSince.map { Date().timeIntervalSince($0) < Self.limitWaitMax } ?? false }
+    }
+    /// Länger als ein 5-Stunden-Fenster hält ein Limit den Mac nicht wach.
+    static let limitWaitMax: TimeInterval = 5.5 * 3600
     var needsAttention: Bool { sessions.values.contains { $0.state == .waiting } }
     var currentRequest: PendingRequest? { pending.first }
 
@@ -206,6 +242,7 @@ final class NotchModel: ObservableObject {
             reply(nil)
 
         case "UserPromptSubmit":
+            session.limitSince = nil
             session.state = .working
             session.detail = "Denkt nach …"
             sessions[sessionId] = session
@@ -217,6 +254,7 @@ final class NotchModel: ObservableObject {
             let tool = event["tool_name"] as? String ?? "Tool"
             let input = event["tool_input"] as? [String: Any] ?? [:]
             session.state = .working
+            session.limitSince = nil
             session.detail = ToolDescriber.short(tool: tool, input: input)
             sessions[sessionId] = session
 
@@ -294,6 +332,27 @@ final class NotchModel: ObservableObject {
                     session.detail = "Bereit"
                 }
                 sessions[sessionId] = session
+            case "quota_auto_resume_fired":
+                // Limit zurückgesetzt, Claude Code macht von selbst weiter.
+                session.limitSince = nil
+                session.state = .working
+                session.detail = "Limit zurückgesetzt, macht weiter"
+                sessions[sessionId] = session
+                clearNotices(for: sessionId)
+                showBanner(Banner(style: .info, title: "Limit zurückgesetzt", subtitle: "\(session.displayName) macht weiter"),
+                           duration: 4)
+            case "quota_auto_resume_stale", "quota_auto_resume_disabled":
+                session.limitSince = nil
+                session.state = .waiting
+                session.detail = "Braucht dich"
+                sessions[sessionId] = session
+                let stale = type == "quota_auto_resume_stale"
+                enqueueNotice(sessionId: sessionId, project: session.displayName,
+                              title: stale ? "Claude wartet auf Enter" : "Claude macht nicht von selbst weiter",
+                              message: message.isEmpty
+                                ? (stale ? "Das Limit ist zurückgesetzt, aber der Mac hat länger geschlafen. Im Terminal Enter drücken. „Mac wach halten“ in den Einstellungen verhindert das."
+                                         : "Das Limit ist zurückgesetzt. Schau kurz bei Claude vorbei.")
+                                : message)
             case "interrupted_prompt":
                 session.state = .idle
                 session.detail = "Abgebrochen"
@@ -306,20 +365,54 @@ final class NotchModel: ObservableObject {
             }
 
         case "Stop":
+            session.limitSince = nil
+            clearNotices(for: sessionId)
+            // Geplante Nachricht (erweitert): Claude macht gleich damit weiter.
+            if let text = FollowUps.shared.take(for: sessionId) {
+                session.state = .working
+                session.detail = "Geplante Nachricht gesendet"
+                sessions[sessionId] = session
+                reply(HookResponses.continueWith(text))
+                showBanner(Banner(style: .info, title: "Geplante Nachricht gesendet", subtitle: session.displayName),
+                           duration: 3.5)
+                break
+            }
             session.state = .done
             session.detail = "Fertig"
             sessions[sessionId] = session
-            clearNotices(for: sessionId)
+            Sounds.play(.done)
+            // Im Notch antworten (erweitert): Claude Code wartet kurz auf deine Antwort.
+            if prefs.replyInNotch && prefs.enabled {
+                let last = Self.clip(event["last_assistant_message"] as? String ?? "", to: 600)
+                let window = TimeInterval(prefs.replyWindow)
+                let request = PendingRequest(sessionId: sessionId, project: session.displayName,
+                                             kind: .reply(lastMessage: last, deadline: Date().addingTimeInterval(window))) { answer in
+                    if case .message(let text) = answer {
+                        reply(HookResponses.continueWith(text))
+                    } else {
+                        reply(nil)
+                    }
+                }
+                enqueue(request, onClose: onClose, timeout: window, sound: false)
+                break
+            }
             reply(nil)
             showBanner(Banner(style: .done, title: "Fertig", subtitle: session.displayName), duration: 3)
-            Sounds.play(.done)
             settleLater(sessionId)
 
         case "StopFailure":
+            reply(nil)
+            if event["error"] as? String == "rate_limit" {
+                session.limitSince = Date()
+                session.state = .idle
+                session.detail = "Limit erreicht"
+                sessions[sessionId] = session
+                enqueueLimitNotice(session)
+                break
+            }
             session.state = .done
             session.detail = "Abgebrochen"
             sessions[sessionId] = session
-            reply(nil)
             showBanner(Banner(style: .info, title: "Abgebrochen", subtitle: session.displayName), duration: 3)
             settleLater(sessionId)
 
@@ -335,7 +428,36 @@ final class NotchModel: ObservableObject {
             reply(nil)
         }
         refreshDesktopInfo(for: sessionId)
+        refreshTitle(for: sessionId)
         pruneStaleSessions()
+    }
+
+    /// Liest den Chat-Titel nach, höchstens alle paar Sekunden je Sitzung und nur neue Zeilen.
+    /// Nur Transkripte in den Ordnern bekannter Konten: Der Pfad kommt aus dem Hook.
+    private func refreshTitle(for id: String, force: Bool = false) {
+        guard let s = sessions[id], let raw = s.transcriptPath, !titleRunning.contains(id) else { return }
+        if !force, let last = titleTimes[id], Date().timeIntervalSince(last) < 4 { return }
+        let path = (raw as NSString).standardizingPath
+        guard path.hasPrefix("/"), path.hasSuffix(".jsonl"),
+              prefs.accounts.contains(where: { path.hasPrefix($0.configDir + "/projects/") }) else { return }
+        titleRunning.insert(id)
+        titleTimes[id] = Date()
+        let state = titleScans[id] ?? SessionTitles.State()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let next = SessionTitles.scan(path: path, from: state)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.titleRunning.remove(id)
+                guard self.sessions[id] != nil else {
+                    self.titleScans[id] = nil
+                    return
+                }
+                self.titleScans[id] = next
+                if let title = next.title, self.sessions[id]?.chatTitle != title {
+                    self.sessions[id]?.chatTitle = title
+                }
+            }
+        }
     }
 
     /// Nach „Fertig“ verschwindet die Sitzung kurz darauf aus der Anzeige.
@@ -396,6 +518,7 @@ final class NotchModel: ObservableObject {
                 continue
             }
             guard session.state == .working || session.state == .waiting else { continue }
+            refreshTitle(for: id)
             if let path = session.transcriptPath,
                let result = Self.transcriptStatus(path, lastSize: session.transcriptSize) {
                 session.transcriptSize = result.size
@@ -454,15 +577,16 @@ final class NotchModel: ObservableObject {
 
     // MARK: - Anfragen
 
-    private func enqueue(_ request: PendingRequest, onClose: (@escaping () -> Void) -> Void) {
+    private func enqueue(_ request: PendingRequest, onClose: (@escaping () -> Void) -> Void,
+                         timeout: TimeInterval? = nil, sound: Bool = true) {
         pending.append(request)
-        Sounds.play(.attention)
+        if sound { Sounds.play(.attention) }
         let id = request.id
         onClose { [weak self] in
             // Hook wurde abgebrochen (z.B. im Terminal beantwortet oder Esc gedrückt).
             self?.remove(id)
         }
-        let timeout = prefs.permissionTimeout
+        let timeout = timeout ?? prefs.permissionTimeout
         timeouts[id] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -486,6 +610,22 @@ final class NotchModel: ObservableObject {
         guard let request = pending.first(where: { $0.id == id }) else { return }
         request.respond(answer)
         remove(id)
+        switch request.kind {
+        case .compose, .limit:
+            return // nur bei uns, Claude Code wartet nicht darauf
+        case .reply:
+            guard var session = sessions[request.sessionId] else { return }
+            if case .message = answer {
+                session.state = .working
+                session.detail = "Antwort gesendet"
+            } else {
+                settleLater(request.sessionId)
+            }
+            sessions[request.sessionId] = session
+            return
+        default:
+            break
+        }
         if var session = sessions[request.sessionId] {
             switch answer {
             case .deny:
@@ -514,8 +654,65 @@ final class NotchModel: ObservableObject {
 
     private func clearNotices(for sessionId: String) {
         for req in pending where req.sessionId == sessionId {
-            if case .notice = req.kind { remove(req.id) }
+            switch req.kind {
+            case .notice, .limit: remove(req.id)
+            default: break
+            }
         }
+    }
+
+    // MARK: - Limit und geplante Nachrichten
+
+    /// Hinweis im Notch: Limit erreicht, und wann es sich zurücksetzt, falls die Nutzung bekannt ist.
+    private func enqueueLimitNotice(_ session: SessionInfo) {
+        guard prefs.enabled else { return }
+        var message = "Claude Code macht nach dem Zurücksetzen von selbst weiter"
+        if let reset = limitReset(for: session) {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "de_DE")
+            f.dateFormat = Calendar.current.isDateInToday(reset) ? "HH:mm" : "EEE HH:mm"
+            message += " (neu um \(f.string(from: reset)))"
+        }
+        message += "."
+        if prefs.keepAwake == .off { message += " Damit das klappt, darf der Mac nicht schlafen." }
+        pending.removeAll { req in
+            if case .limit = req.kind { return req.sessionId == session.id }
+            return false
+        }
+        let request = PendingRequest(sessionId: session.id, project: session.displayName,
+                                     kind: .limit(message: message)) { _ in }
+        pending.append(request)
+        Sounds.play(.attention)
+    }
+
+    /// Zeitpunkt, zu dem sich ein ausgeschöpftes Limit des Kontos zurücksetzt (nur mit Nutzungsanzeige bekannt).
+    private func limitReset(for session: SessionInfo) -> Date? {
+        guard let id = session.accountID, let account = prefs.account(id: id),
+              let snap = UsageMonitor.shared.state(for: account).snapshot else { return nil }
+        return snap.windows.filter { $0.percent >= 99.5 }.compactMap(\.resetsAt).filter { $0 > Date() }.max()
+    }
+
+    /// Feld zum Schreiben einer Nachricht öffnen, die Claude beim nächsten Ende der Sitzung bekommt.
+    func composeFollowUp(for sessionId: String) {
+        guard prefs.followUpsEnabled, prefs.enabled, let session = sessions[sessionId] else { return }
+        pending.removeAll { req in
+            guard req.sessionId == sessionId else { return false }
+            switch req.kind {
+            case .compose, .limit: return true
+            default: return false
+            }
+        }
+        let request = PendingRequest(sessionId: sessionId, project: session.displayName, kind: .compose) { answer in
+            guard case .message(let text) = answer else { return }
+            Task { @MainActor in FollowUps.shared.plan(text, for: sessionId, project: session.displayName) }
+        }
+        withAnimation(Theme.spring) { pending.append(request) }
+    }
+
+    /// Ganz kurz, mit sichtbarem „…“, falls gekürzt.
+    private static func clip(_ text: String, to limit: Int) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.count > limit ? String(t.prefix(limit)) + " …" : t
     }
 
     private func dropRequests(for sessionId: String) {
@@ -529,6 +726,10 @@ final class NotchModel: ObservableObject {
         let limit = Date().addingTimeInterval(-60 * 60)
         for (id, s) in sessions where s.updatedAt < limit && !pending.contains(where: { $0.sessionId == id }) {
             sessions[id] = nil
+        }
+        for id in Array(titleScans.keys) where sessions[id] == nil {
+            titleScans[id] = nil
+            titleTimes[id] = nil
         }
     }
 

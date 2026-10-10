@@ -242,6 +242,9 @@ enum Layout {
         switch req.kind {
         case .permission: return 176
         case .notice: return 132
+        case .limit: return 140
+        case .reply(let last, _): return last.isEmpty ? 150 : 200
+        case .compose: return 186
         case .question(let set):
             if set.questions.count == 1, !set.questions[0].multiSelect {
                 return 112 + CGFloat(min(set.questions[0].options.count, 4)) * 36

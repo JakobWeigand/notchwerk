@@ -30,7 +30,7 @@ Weitere Punkte
 * Bleibt immer im Vordergrund, auch in Vollbild-Spaces und über Videos.
 * Erkennt automatisch ob ein Notch da ist. Bei zugeklapptem MacBook an Monitor, Maus und Tastatur erscheint die Anzeige oben rechts (oder oben mittig, umstellbar im Menü).
 * Es wird nur gezeigt, was gerade passiert: Sitzungen, die arbeiten oder dich brauchen. Fertige Sitzungen verschwinden wieder. „Wartet“ steht nur da, wenn Claude wirklich eine Freigabe oder Antwort braucht.
-* Jede Zeile zeigt, woher die Sitzung kommt: **Terminal**, **VS Code**, **Claude App** (dort mit dem Chat-Titel). Ein Klick auf die Zeile holt genau dieses Fenster nach vorn: den Tab im Terminal, das Projektfenster in VS Code oder den Chat in der Claude App.
+* Jede Zeile zeigt links das Konto (bei mehreren, z.B. „Privat“ oder „Work“), dann das Projekt (der Ordnername, lesbar gemacht: „wuerfelbecher-app“ wird „Wuerfelbecher App“) und dann den Titel des Chats, so wie er in Claude Code, VS Code oder der Claude App heißt. Den Titel liest die App aus dem Transkript der Sitzung (nur die Titel-Einträge, nur in den Ordnern deiner Konten). Ist noch keiner vergeben, steht dort, was Claude gerade tut. Ein kleines Symbol zeigt, woher die Sitzung kommt: **Terminal**, **VS Code** oder **Claude App**. Ein Klick auf die Zeile holt genau dieses Fenster nach vorn: den Tab im Terminal, das Projektfenster in VS Code oder den Chat in der Claude App.
 * Die Liste erscheint beim Überfahren des Notch oder des Maskottchens und verschwindet, sobald die Maus wieder weg ist. Wie groß sie ist (Breite und wie viele Sitzungen ohne Scrollen hineinpassen), lässt sich in den Einstellungen und im Menü unter **Größe der Liste** wählen. Oben in der Liste stehen „Claude“, daneben die Einstellungen und der Stand (z.B. „App geöffnet“). Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
 * Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt. Bei mehreren Konten eine Zeile je Konto.
 * Der Abstand des orangenen Rands unter dem Notch ist einstellbar (Standard 1 mm), damit der echte Notch nicht hervorschaut.
@@ -41,6 +41,21 @@ Weitere Punkte
 * Wenn die App nicht läuft, merkt Claude Code nichts davon und fragt ganz normal im Terminal.
 * **Größe des Maskottchens** oben rechts und beim schwebenden Reiter: in den Einstellungen per Regler (20 bis 80 Punkt) oder im Menü in vier Stufen.
 * **Aktualisieren per Klick**: Menü → **Nach Updates suchen …** oder Einstellungen › Updates. Siehe unten.
+* **Mac wach halten**: Einstellungen › Mac wach halten oder im Menü: **Aus**, **Solange Claude arbeitet** oder **Dauerhaft**. Wie `caffeinate -i`: Der Mac schläft nicht ein, der Bildschirm geht aber aus und sperrt sich wie gewohnt. „Solange Claude arbeitet“ gilt auch, während eine Sitzung auf das Zurücksetzen ihres Limits wartet. So verpasst Claude Code das automatische Weitermachen nach dem Limit nicht. Zugeklappt und ohne externen Bildschirm schläft ein MacBook trotzdem ein.
+* **Limit erreicht**: Der Notch meldet es und, wenn die Nutzungsanzeige an ist, wann sich das Limit zurücksetzt. Claude Code macht danach von selbst weiter, der Notch zeigt das an. Hat der Mac zu lange geschlafen und Claude Code wartet auf Enter, sagt der Notch Bescheid.
+
+### Erweiterte Einstellungen
+
+Ganz unten in den Einstellungen, zugeklappt und standardmäßig aus. Jede Funktion zeigt dort, was passieren kann und wie die App sich schützt, und wird erst nach einer Bestätigung eingeschaltet.
+
+| Funktion | Was sie tut | Das Risiko |
+|---|---|---|
+| Updates automatisch installieren | installiert gefundene Updates ohne Rückfrage, frühestens 24 Stunden nach Erscheinen und nur, wenn keine Sitzung arbeitet | eine manipulierte Version käme ungesehen auf den Mac (die Prüfsumme liegt im selben Release, die Signatur ist ad hoc) |
+| Bildschirm anlassen | beim Wachhalten auch den Bildschirm anlassen | der Mac sperrt sich nicht von selbst |
+| Nachrichten an Claude planen | eine Nachricht, die Claude bekommt, sobald die Sitzung das nächste Mal fertig ist, z.B. nach dem Limit. Planen über das Sprechblasen-Symbol neben einer Sitzung oder über **Nachricht für danach** beim Limit-Hinweis | Claude arbeitet unbeaufsichtigt weiter, mit allem, was die Sitzung darf |
+| Claude im Notch antworten | wenn Claude fertig ist, zeigt der Notch die letzte Antwort und ein Eingabefeld; Claude Code wartet so lange (30 Sekunden bis 5 Minuten) | das Terminal wartet in der Zeit; Claudes Antwort ist über allen Fenstern sichtbar |
+
+Beide Nachrichten-Funktionen nutzen den offiziellen Stop-Hook von Claude Code (`decision: block`): Der Text geht nur als Anweisung an Claude, nie an ein Terminal oder eine Shell. Tastendrücke ins Terminal zu schicken wäre einfacher, könnte aber, wenn Claude dort schon beendet ist, als Shell-Befehl ausgeführt werden. Deshalb macht Notchwerk das nicht. Eine Nachricht an eine Sitzung, die gerade nichts tut, lässt sich so allerdings nicht schicken. Sie wartet, bis die Sitzung das nächste Mal fertig ist.
 
 ### Mehrere Claude Code Konten
 
@@ -98,6 +113,9 @@ Damit du vor dem Installieren weißt, worauf du dich einlässt. Alles davon läs
 | Anmeldeobjekt | Systemeinstellungen → Anmeldeobjekte | erst nach **Verbinden** | Menü → **Beim Anmelden starten** abwählen |
 | Einstellungen | `defaults` unter `io.github.jakobweigand.claude-notch` (auch der Projektordner für Updates) | beim ersten Ändern bzw. durch `install.sh` | `uninstall.sh` |
 | Update-Skript und Protokoll | `~/.claude-notch/update.sh`, `~/.claude-notch/update.log` | nur beim Aktualisieren | Ordner löschen |
+| Wachhalten | eine Energie-Assertion, sichtbar mit `pmset -g assertions` | nur solange eingeschaltet und nötig | ausschalten oder App beenden |
+
+Ab Version 0.7 wartet der Stop-Hook bis zu 330 Sekunden (vorher 5), damit „Claude im Notch antworten“ funktioniert. Ist die Funktion aus, antwortet die App sofort. Beim ersten Start nach dem Update passt die App ihre eigenen Einträge in den `settings.json` schon verbundener Konten an (vorher wie immer eine Sicherung), fremde Einträge bleiben unberührt.
 
 Dialoge, die macOS zeigen kann, und was sie bedeuten:
 
@@ -149,13 +167,15 @@ Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins I
 * Läuft die App nicht oder antwortest du nicht innerhalb der Wartezeit (Standard 10 Minuten), gibt der Hook keine Entscheidung zurück. Claude Code fragt dann wie gewohnt im Terminal. Es wird also nie automatisch etwas erlaubt.
 * Im öffentlichen Repository liegen keine Geheimnisse. Jeder Nutzer bekommt seinen eigenen Token.
 * „Immer erlauben“ übernimmt genau die Regel, die Claude Code selbst vorschlägt.
+* Antworten und geplante Nachrichten an Claude gehen als JSON an den Stop-Hook, nie an eine Shell. Sie sind auf 4000 Zeichen begrenzt, ohne Steuerzeichen und liegen nur im Arbeitsspeicher (geplante verfallen nach 24 Stunden und beim Beenden der App). Das Eingabefeld im Notch bekommt nie von selbst den Fokus.
+* Automatische Updates laden nur über HTTPS von `github.com/JakobWeigand/notchwerk/releases/download/…`, nur fertige Releases. Die Version im Download muss zum Release passen und neuer sein als die laufende. Das gilt auch beim Aktualisieren per Klick.
 * Passt ein Befehl nicht vollständig in die Karte am Notch, gibt es dort kein **Erlauben**, nur **Ablehnen** und **Im Terminal**. So wird nie etwas freigegeben, das man nicht ganz gesehen hat. Die Erlauben-Knöpfe reagieren außerdem erst kurz nach dem Aufklappen, damit ein Klick, der eigentlich der Menüleiste galt, nichts freigibt.
 * Anfragen ohne gültigen Token weist die App ab, bevor sie deren Inhalt überhaupt annimmt.
 * Die **Nutzungsanzeige** und die **Widgets** sind standardmäßig aus. Schaltest du sie ein, liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“, bei weiteren Konten mit einer Endung je Ordner) und fragt nur die Limits bei `api.anthropic.com` ab, dieselbe Stelle wie `/usage` in Claude Code. macOS fragt dabei nach; mit **Immer erlauben** nie wieder. Nur für die Anzeige abgefragt wird beim Öffnen der Liste; mit Widgets zusätzlich im Hintergrund im eingestellten Abstand (frühestens alle 10 Minuten, bei einer Sperre durch den Server automatisch seltener). Der Token bleibt nur im Arbeitsspeicher. Auf die Platte kommen nur die Prozentwerte für die Widgets. Beachte: Anthropic sieht den Login-Token laut seinen Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, du nutzt sie auf eigene Verantwortung.
 
 ## Datenschutz
 
-Die App sammelt keine Daten, enthält keine Analyse- oder Tracking-Bausteine und hat keine Verbindung zu einem Server des Entwicklers. Was Claude Code über die Hooks meldet (Projektpfad, aktuelles Werkzeug, Freigabetexte), wird nur im Arbeitsspeicher gehalten und für die Anzeige genutzt, nie gespeichert oder verschickt. Netzverbindungen gibt es nur zwei: die optionale Nutzungsanzeige zu `api.anthropic.com` (siehe Sicherheit) und die Suche nach Updates bei GitHub. Die läuft nur auf Klick oder, wenn du es einschaltest, einmal am Tag, und schickt nichts außer der Anfrage selbst. Beim Herunterladen über GitHub Releases gelten die Datenschutzbestimmungen von GitHub.
+Die App sammelt keine Daten, enthält keine Analyse- oder Tracking-Bausteine und hat keine Verbindung zu einem Server des Entwicklers. Was Claude Code über die Hooks meldet (Projektpfad, aktuelles Werkzeug, Freigabetexte, bei „Claude im Notch antworten“ auch Claudes letzte Antwort), wird nur im Arbeitsspeicher gehalten und für die Anzeige genutzt, nie gespeichert oder verschickt. Netzverbindungen gibt es nur zwei: die optionale Nutzungsanzeige zu `api.anthropic.com` (siehe Sicherheit) und die Suche nach Updates bei GitHub. Die läuft nur auf Klick oder, wenn du es einschaltest, einmal am Tag, und schickt nichts außer der Anfrage selbst. Beim Herunterladen über GitHub Releases gelten die Datenschutzbestimmungen von GitHub.
 
 ## Lizenz
 
@@ -203,11 +223,14 @@ Der Code liegt in `Sources/Notchwerk` (die App), `Sources/NotchwerkWidgets` (die
 * `NotchWindow.swift` Fenster über allem, Bildschirmerkennung, Maus
 * `Geometry.swift` Größen und welcher Zustand gerade gezeigt wird
 * `SessionOrigin.swift` Terminal, VS Code oder Claude App? (aus der Prozesskette)
+* `SessionTitles.swift` Titel des Chats aus dem Transkript
 * `DesktopSessions.swift` Chat-Titel und Link für Sitzungen aus der Claude Desktop App
 * `SessionFocus.swift` holt beim Klick das richtige Fenster nach vorn
 * `Usage.swift` Nutzung (Sitzungs- und Wochenlimit) je Konto wie bei `/usage`, versorgt auch die Widgets
 * `Accounts.swift` mehrere Claude Code Konten (Konfigurationsordner, Schlüsselbund, Anmeldung)
 * `EventServer.swift` lokaler Server mit Token-Prüfung
 * `HookInstaller.swift` Hook-Skript und Eintrag in die `settings.json` jedes Kontos
-* `Updater.swift` Aktualisieren per Klick (Projektordner oder GitHub Releases)
+* `Updater.swift` Aktualisieren per Klick oder automatisch (Projektordner oder GitHub Releases)
+* `KeepAwake.swift` Mac wach halten (Energie-Assertion wie `caffeinate`)
+* `FollowUps.swift` geplante Nachrichten an Claude, zugestellt über den Stop-Hook
 * `Mascot.swift` das animierte Maskottchen (das Logo selbst steht in `NotchwerkShared/Brand.swift`)

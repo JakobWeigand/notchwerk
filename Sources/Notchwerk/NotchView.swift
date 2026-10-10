@@ -304,9 +304,9 @@ private struct NotchBody: View {
         switch presentation {
         case .request:
             if let req = model.currentRequest {
-                RequestView(request: req, more: model.pending.count - 1) { answer in
-                    model.answer(req.id, with: answer)
-                }
+                RequestView(request: req, more: model.pending.count - 1,
+                            answer: { answer in model.answer(req.id, with: answer) },
+                            compose: { model.composeFollowUp(for: req.sessionId) })
                 .id(req.id)
             }
         case .banner:
@@ -619,25 +619,70 @@ private struct SessionRow: View {
     let session: SessionInfo
     let action: () -> Void
     @State private var hover = false
+    @ObservedObject private var prefs = Preferences.shared
+    @ObservedObject private var followUps = FollowUps.shared
 
     var body: some View {
-        Button(action: action) { content }
-            .buttonStyle(RowStyle(hover: hover))
-            .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
-            .help(session.cwd)
+        HStack(spacing: 2) {
+            Button(action: action) { content }
+                .buttonStyle(RowStyle(hover: hover))
+                .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+                .help(tooltip)
+            if prefs.followUpsEnabled {
+                planButton
+            }
+        }
     }
 
+    /// Nachricht für das nächste Ende dieser Sitzung planen (erweiterte Einstellung).
+    private var planButton: some View {
+        let planned = followUps.followUp(for: session.id)
+        return Button {
+            NotchModel.shared.composeFollowUp(for: session.id)
+        } label: {
+            Image(systemName: planned == nil ? "text.bubble" : "text.bubble.fill")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(planned == nil ? Theme.muted : Theme.orange)
+                .frame(width: 22, height: Layout.rowHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressStyle(scale: 0.88))
+        .help(planned.map { "Geplant: \($0.text)" } ?? "Nachricht planen, die Claude beim nächsten Ende bekommt")
+        .accessibilityLabel(planned == nil ? "Nachricht planen" : "Geplante Nachricht ändern")
+    }
+
+    /// Links das Konto (bei mehreren), dann das Projekt, dann worum es im Chat geht.
+    /// Ohne bekannten Titel steht dort, was Claude gerade tut.
     private var content: some View {
         HStack(spacing: 8) {
             statusIcon
                 .frame(width: 14)
-            Text(session.displayName)
+            if let account = accountName {
+                Text(account)
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.orange)
+                    .lineLimit(1)
+                    .frame(width: 52, alignment: .leading)
+            }
+            Text(session.projectName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.cream)
                 .lineLimit(1)
-                .frame(maxWidth: 230, alignment: .leading)
-                .layoutPriority(1)
-            if !session.detail.isEmpty {
+                .truncationMode(.middle)
+                .frame(maxWidth: 170, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
+            if let title = session.title {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.muted.opacity(0.7))
+                Text(title)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.cream.opacity(0.78))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
+            } else if !session.detail.isEmpty {
                 Text(session.detail)
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(Theme.muted)
@@ -645,23 +690,12 @@ private struct SessionRow: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 4)
-            if let account = accountName {
-                Text(account)
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(Theme.orange)
-                    .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Theme.orange.opacity(0.14)))
-            }
-            let label = session.origin.label
-            if !label.isEmpty {
-                Text(label)
+            if let icon = originIcon {
+                Image(systemName: icon)
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(Theme.muted)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                    .help(session.origin.label)
+                    .accessibilityLabel(session.origin.label)
             }
             Image(systemName: "arrow.up.forward")
                 .font(.system(size: 9, weight: .bold))
@@ -670,6 +704,24 @@ private struct SessionRow: View {
         .padding(.horizontal, 8)
         .frame(height: Layout.rowHeight)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Woher die Sitzung kommt, als kleines Symbol statt Text. Der Name steht im Tooltip.
+    private var originIcon: String? {
+        switch session.origin.host {
+        case .claudeApp: return "macwindow"
+        case .vscode, .cursor: return "chevron.left.forwardslash.chevron.right"
+        case .terminal: return "terminal"
+        case .other: return "app"
+        case .unknown: return session.origin.tty == nil ? nil : "terminal"
+        }
+    }
+
+    /// Tooltip: was Claude gerade tut und wo.
+    private var tooltip: String {
+        [session.detail, session.title.map { _ in session.projectName }, session.cwd]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     /// Hervorhebung beim Überfahren, kräftiger und minimal kleiner schon beim Drücken.
@@ -714,6 +766,8 @@ private struct RequestView: View {
     let request: PendingRequest
     let more: Int
     let answer: (PendingRequest.Answer) -> Void
+    /// Nachricht für später schreiben (aus dem Limit-Hinweis).
+    let compose: () -> Void
     /// Erlauben erst kurz nach dem Erscheinen, damit ein Klick, der eigentlich woanders hin
     /// sollte, nichts freigibt. Die Ansicht entsteht pro Anfrage neu (.id), also auch pro Anfrage.
     @State private var armed = false
@@ -762,6 +816,45 @@ private struct RequestView: View {
                 }
             case .question(let set):
                 questionBody(set)
+            case .limit(let message):
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.cream.opacity(0.9))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Spacer()
+                    if Preferences.shared.followUpsEnabled {
+                        NotchButton("Nachricht für danach …", role: .secondary) { compose() }
+                    }
+                    NotchButton("Verstanden", role: .primary) { answer(.terminal) }
+                }
+            case .reply(let last, let deadline):
+                if !last.isEmpty {
+                    Text(last)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.cream.opacity(0.8))
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                MessageComposer(prompt: "Antwort an Claude …", sendTitle: "Antworten", cancelTitle: "Fertig",
+                                deadline: deadline,
+                                send: { answer(.message($0)) },
+                                cancel: { answer(.terminal) })
+            case .compose:
+                Text("Claude bekommt die Nachricht, sobald die Sitzung das nächste Mal fertig ist, auch nach einem Limit. Sie geht nur an Claude, nie an ein Terminal.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                MessageComposer(prompt: "Zum Beispiel: Mach weiter und teste danach alles",
+                                initial: FollowUps.shared.followUp(for: request.sessionId)?.text ?? "",
+                                sendTitle: "Planen", cancelTitle: "Abbrechen",
+                                extra: FollowUps.shared.followUp(for: request.sessionId) == nil ? nil : (
+                                    "Löschen", { FollowUps.shared.cancel(request.sessionId); answer(.terminal) }),
+                                send: { answer(.message($0)) },
+                                cancel: { answer(.terminal) })
             }
         }
     }
@@ -792,6 +885,9 @@ private struct RequestView: View {
         case .permission(let tool, _, _): return "Claude möchte \(tool) nutzen"
         case .notice(let title, _): return title
         case .question: return "Claude hat eine Frage"
+        case .limit: return "Limit erreicht"
+        case .reply: return "Claude ist fertig"
+        case .compose: return "Nachricht für später"
         }
     }
 
@@ -901,5 +997,72 @@ struct NotchButton: View {
         case .secondary: return Theme.orange.opacity(0.35)
         default: return .clear
         }
+    }
+}
+
+/// Eingabefeld für eine Nachricht an Claude. Bekommt nie von selbst den Fokus: Erst ein Klick ins
+/// Feld nimmt Tastatureingaben an, damit Tippen in einer anderen App nicht versehentlich hier landet.
+private struct MessageComposer: View {
+    let prompt: String
+    var initial = ""
+    let sendTitle: String
+    let cancelTitle: String
+    /// Claude Code wartet nur bis dahin, die Zeit läuft sichtbar mit.
+    var deadline: Date?
+    /// Weiterer Knopf links, z.B. „Löschen“.
+    var extra: (title: String, action: () -> Void)?
+    let send: (String) -> Void
+    let cancel: () -> Void
+
+    @State private var text = ""
+    @State private var loaded = false
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("", text: $text, prompt: Text(prompt).foregroundColor(Theme.muted), axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.cream)
+                .tint(Theme.orange)
+                .lineLimit(2...3)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.orange.opacity(0.3), lineWidth: 1))
+                .onSubmit(submit)
+                .onChange(of: text) { value in
+                    if value.count > FollowUps.maxLength { text = String(value.prefix(FollowUps.maxLength)) }
+                }
+                .accessibilityLabel(prompt)
+            HStack(spacing: 8) {
+                NotchButton(cancelTitle, role: .ghost, action: cancel)
+                if let extra {
+                    NotchButton(extra.title, role: .deny, action: extra.action)
+                }
+                Spacer(minLength: 0)
+                if let deadline {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        Text("Claude wartet noch \(max(0, Int(deadline.timeIntervalSince(ctx.date).rounded()))) s")
+                            .font(.system(size: 10.5).monospacedDigit())
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+                NotchButton(sendTitle, role: .primary, action: submit)
+                    .disabled(trimmed.isEmpty)
+                    .opacity(trimmed.isEmpty ? 0.5 : 1)
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            text = initial
+        }
+    }
+
+    private func submit() {
+        guard !trimmed.isEmpty else { return }
+        send(trimmed)
     }
 }

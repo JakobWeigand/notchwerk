@@ -13,7 +13,7 @@ enum HookResponses {
             if !suggestions.isEmpty { decision["updatedPermissions"] = suggestions }
         case .deny:
             decision = ["behavior": "deny", "message": "Im Notch abgelehnt."]
-        case .terminal, .answers:
+        case .terminal, .answers, .message:
             return nil // keine Entscheidung: Claude Code fragt wie gewohnt im Terminal
         }
         return encode([
@@ -35,6 +35,15 @@ enum HookResponses {
                 "updatedInput": updated,
             ],
         ])
+    }
+
+    /// Antwort auf den Stop-Hook: Claude hört nicht auf, sondern bekommt `text` als nächste Anweisung.
+    /// Der Text kommt von dir (Antwort im Notch oder geplante Nachricht) und geht nur als JSON-Wert
+    /// an Claude Code, nie an eine Shell.
+    static func continueWith(_ text: String) -> Data? {
+        let clean = FollowUps.sanitize(text)
+        guard !clean.isEmpty else { return nil }
+        return encode(["decision": "block", "reason": clean])
     }
 
     private static func encode(_ obj: [String: Any]) -> Data? {

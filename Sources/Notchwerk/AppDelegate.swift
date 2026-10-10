@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watchClaudeApp()
         UsageMonitor.shared.start()
         Updater.shared.start()
+        KeepAwake.shared.start()
+        // Nach einem Update: unsere Hook-Einträge bei schon verbundenen Konten auf den neuen Stand bringen.
+        HookInstaller.refreshOutdated()
 
         if !HookInstaller.isInstalled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -39,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
+        KeepAwake.shared.stop()
         HookInstaller.cleanupRuntime()
     }
 
@@ -222,6 +226,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
+        if KeepAwake.shared.active {
+            let awake = NSMenuItem(title: KeepAwake.shared.displayActive ? "Hält Mac und Bildschirm wach" : "Hält den Mac wach",
+                                   action: nil, keyEquivalent: "")
+            awake.isEnabled = false
+            menu.addItem(awake)
+        }
+        let planned = FollowUps.shared.planned.count
+        if prefs.followUpsEnabled && planned > 0 {
+            let line = NSMenuItem(title: "\(planned) geplante Nachricht\(planned == 1 ? "" : "en") an Claude",
+                                  action: nil, keyEquivalent: "")
+            line.isEnabled = false
+            menu.addItem(line)
+        }
         if prefs.showUsage || prefs.widgetsEnabled {
             let accounts = prefs.accounts
             for account in accounts {
@@ -233,8 +250,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(usage)
             }
         }
+        let accounts = prefs.accounts
         for s in model.activeSessions {
-            let text = s.detail.isEmpty ? s.displayName : "\(s.displayName)  ·  \(s.detail)"
+            var parts: [String] = []
+            if accounts.count > 1, let id = s.accountID, let account = prefs.account(id: id) { parts.append(account.name) }
+            parts.append(s.projectName)
+            if let title = s.title { parts.append(title) } else if !s.detail.isEmpty { parts.append(s.detail) }
+            let text = parts.joined(separator: "  ›  ")
             let mi = item(text, #selector(focusSession(_:)))
             mi.representedObject = s.id
             mi.indentationLevel = 1
@@ -244,9 +266,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Einstellungen …", #selector(openSettings), key: ","))
         menu.addItem(toggle("Anzeige pausieren", !prefs.enabled, #selector(togglePause)))
+        let awakeItem = NSMenuItem(title: "Mac wach halten", action: nil, keyEquivalent: "")
+        let awakeMenu = NSMenu()
+        for mode in Preferences.KeepAwake.allCases {
+            let mi = toggle(mode.title, prefs.keepAwake == mode, #selector(chooseKeepAwake(_:)))
+            mi.representedObject = mode.rawValue
+            awakeMenu.addItem(mi)
+        }
+        awakeItem.submenu = awakeMenu
+        menu.addItem(awakeItem)
+        if prefs.followUpsEnabled && planned > 0 {
+            menu.addItem(item("Geplante Nachrichten löschen", #selector(cancelFollowUps)))
+        }
         menu.addItem(.separator())
 
-        let accounts = prefs.accounts
         let connected = accounts.filter(HookInstaller.isInstalled(in:)).count
         if connected == 0 {
             menu.addItem(item("Mit Claude Code verbinden …", #selector(installHooks)))
@@ -407,6 +440,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func runUpdate() { Updater.shared.update() }
+    @objc private func cancelFollowUps() { FollowUps.shared.cancelAll() }
+
+    @objc private func chooseKeepAwake(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let mode = Preferences.KeepAwake(rawValue: raw) {
+            prefs.keepAwake = mode
+        }
+    }
 
     /// Aus dem Menü: nachsehen und das Ergebnis gleich zeigen, bei einem Update mit „Jetzt aktualisieren“.
     @objc private func checkForUpdates() {
