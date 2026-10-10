@@ -72,6 +72,24 @@ final class Preferences: ObservableObject {
     @Published var compactRows: Int { didSet { defaults.set(compactRows, forKey: "compactRows") } }
     /// Nutzung (Sitzungs- und Wochenlimit) unten in der aufgeklappten Liste zeigen.
     @Published var showUsage: Bool { didSet { defaults.set(showUsage, forKey: "showUsage") } }
+    /// Claude Code Konten (Konfigurationsordner). Das Standardkonto ~/.claude steht immer vorn.
+    @Published var accounts: [ClaudeAccount] {
+        didSet {
+            let fixed = Self.withDefault(accounts)
+            if fixed != accounts { accounts = fixed; return }
+            if let data = try? JSONEncoder().encode(accounts) { defaults.set(data, forKey: "accounts") }
+        }
+    }
+    /// Widgets auf dem Schreibtisch mit Nutzungsdaten versorgen. Dafür fragt die App auch im
+    /// Hintergrund nach, alle `widgetRefreshMinutes` Minuten.
+    @Published var widgetsEnabled: Bool { didSet { defaults.set(widgetsEnabled, forKey: "widgetsEnabled") } }
+    @Published var widgetRefreshMinutes: Int { didSet { defaults.set(widgetRefreshMinutes, forKey: "widgetRefreshMinutes") } }
+    /// Das Maskottchen in der Menüleiste läuft mit, solange Claude arbeitet, und winkt, wenn Claude dich braucht.
+    @Published var animateMenuBarIcon: Bool { didSet { defaults.set(animateMenuBarIcon, forKey: "animateMenuBarIcon") } }
+
+    /// Abstände für das Aktualisieren im Hintergrund. Seltener als alle 10 Minuten, weil
+    /// api.anthropic.com häufige Abfragen schnell mit einer Sperre beantwortet.
+    static let widgetRefreshChoices = [10, 15, 30, 60]
 
     private init() {
         defaults.register(defaults: [
@@ -92,6 +110,9 @@ final class Preferences: ObservableObject {
             "showSessionsInNotch": false,
             "compactRows": 2,
             "showUsage": false,
+            "widgetsEnabled": false,
+            "widgetRefreshMinutes": 15,
+            "animateMenuBarIcon": true,
         ])
         enabled = defaults.bool(forKey: "enabled")
         displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .notch
@@ -110,6 +131,41 @@ final class Preferences: ObservableObject {
         showSessionsInNotch = defaults.bool(forKey: "showSessionsInNotch")
         compactRows = min(max(defaults.integer(forKey: "compactRows"), 1), 3)
         showUsage = defaults.bool(forKey: "showUsage")
+        let saved = defaults.data(forKey: "accounts").flatMap { try? JSONDecoder().decode([ClaudeAccount].self, from: $0) }
+        accounts = Self.withDefault(saved ?? [])
+        widgetsEnabled = defaults.bool(forKey: "widgetsEnabled")
+        let minutes = defaults.integer(forKey: "widgetRefreshMinutes")
+        widgetRefreshMinutes = Self.widgetRefreshChoices.contains(minutes) ? minutes : 15
+        animateMenuBarIcon = defaults.bool(forKey: "animateMenuBarIcon")
+    }
+
+    /// Standardkonto vorn, jeder Ordner nur einmal.
+    private static func withDefault(_ list: [ClaudeAccount]) -> [ClaudeAccount] {
+        var seen = Set<String>()
+        var out: [ClaudeAccount] = []
+        let def = list.first(where: \.isDefault) ?? .makeDefault()
+        for account in [def] + list.filter({ !$0.isDefault }) where seen.insert(account.configDir).inserted {
+            out.append(account)
+        }
+        return out
+    }
+}
+
+extension Preferences {
+    /// Konto, zu dem eine Sitzung gehört (über den Pfad des Transkripts). Längster passender Ordner gewinnt.
+    func account(forTranscript path: String?) -> ClaudeAccount? {
+        guard let path, !path.isEmpty else { return nil }
+        return accounts.filter { $0.owns(transcriptPath: path) }.max { $0.configDir.count < $1.configDir.count }
+    }
+
+    func account(id: String) -> ClaudeAccount? {
+        accounts.first { $0.id == id }
+    }
+
+    /// CLAUDE_CONFIG_DIR so merken, wie der Hook ihn gemeldet hat. Schreibt nur bei einer Änderung.
+    func rememberEnvValue(_ value: String?, for id: String) {
+        guard let i = accounts.firstIndex(where: { $0.id == id }), accounts[i].envValue != value else { return }
+        accounts[i].envValue = value
     }
 }
 

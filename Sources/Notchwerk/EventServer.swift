@@ -89,6 +89,11 @@ final class EventServer {
            let data = Data(base64Encoded: encoded), let text = String(data: data, encoding: .utf8) {
             event["_notch_origin"] = text
         }
+        // Und den Konfigurationsordner (CLAUDE_CONFIG_DIR), daran hängt, welches Konto die Sitzung nutzt.
+        if let encoded = request.headers["x-claude-notch-config"], !encoded.isEmpty,
+           let data = Data(base64Encoded: encoded), let text = String(data: data, encoding: .utf8) {
+            event["_notch_config"] = text
+        }
 
         let once = OnceFlag()
         let reply: Reply = { [weak self] data in

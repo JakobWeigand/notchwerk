@@ -39,7 +39,7 @@ struct ScreenGeometry: Equatable {
     /// Fenstergröße. Das Fenster ist durchsichtig und klickt durch, solange die Maus nicht auf der Anzeige ist.
     var panelSize: CGSize {
         switch style {
-        case .floating: return CGSize(width: 460, height: 320)
+        case .floating: return CGSize(width: 460, height: 360)
         case .corner: return CGSize(width: 460, height: 380)
         default: return CGSize(width: 680, height: 380)
         }
@@ -133,8 +133,18 @@ enum Layout {
     /// Kopfzeile (und Ruhe-Kachel) auf Bildschirmen ohne Notch und beim schwebenden Reiter.
     static let cornerHeader: CGFloat = 46
     static let listHeader: CGFloat = 22
-    /// Zeile mit den Nutzungsringen unter der Liste (Trennlinie eingerechnet).
-    static let usageHeight: CGFloat = 50
+    /// Eine Zeile mit Nutzungsringen (je Konto eine).
+    static let usageRowHeight: CGFloat = 43
+
+    /// Konten, deren Nutzung unter der Liste steht. Höchstens drei, damit alles ins Fenster passt.
+    static func usageAccounts(_ prefs: Preferences) -> [ClaudeAccount] {
+        Array(prefs.accounts.prefix(3))
+    }
+
+    /// Höhe des Nutzungsbereichs unter der Liste, Trennlinie eingerechnet.
+    static func usageBlockHeight(_ prefs: Preferences) -> CGFloat {
+        7 + CGFloat(max(1, usageAccounts(prefs).count)) * usageRowHeight
+    }
 
     static func presentation(model: NotchModel, prefs: Preferences, geometry g: ScreenGeometry,
                              hovering: Bool, pinned: Bool) -> Presentation {
@@ -183,7 +193,7 @@ enum Layout {
         case .sessions:
             let body: CGFloat = active == 0 ? 40 : listRows(active: active, max: rows) * rowHeight
             let footer: CGFloat = model.idleCount > 0 ? 16 : 0
-            let usage: CGFloat = prefs.showUsage ? usageHeight : 0
+            let usage: CGFloat = prefs.showUsage ? usageBlockHeight(prefs) : 0
             return CGSize(width: expandedWidth, height: top + 6 + listHeader + 4 + body + footer + usage + 12)
         case .request:
             return CGSize(width: expandedWidth, height: top + requestHeight(model.currentRequest))

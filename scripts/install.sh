@@ -22,4 +22,4 @@ rm -rf "$TARGET"
 cp -R "dist/Notchwerk.app" "$TARGET"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
 open "$TARGET"
-echo "✓ Notchwerk läuft. Das ✦ Symbol findest du in der Menüleiste."
+echo "✓ Notchwerk läuft. Das Claude-Maskottchen findest du in der Menüleiste."

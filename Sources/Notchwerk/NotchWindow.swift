@@ -45,6 +45,8 @@ final class NotchController {
         /// Beim Ziehen des Reiters: Abstand zwischen Mauszeiger und Kachelmitte.
         var grabOffset: CGPoint?
         var floatingCenter: CGPoint
+        /// Von außen aufgeklappt (Klick auf ein Widget): bis dahin offen lassen, auch ohne Maus.
+        var holdOpenUntil: Date?
     }
 
     private let model: NotchModel
@@ -157,6 +159,14 @@ final class NotchController {
         for e in entries { e.panel.orderFrontRegardless() }
     }
 
+    /// Liste mit Sitzungen und Nutzung aufklappen, z.B. nach einem Klick auf ein Widget.
+    /// Sie bleibt ein paar Sekunden offen, auch wenn die Maus gerade woanders ist.
+    func showList() {
+        guard !entries.isEmpty else { return }
+        entries[0].holdOpenUntil = Date().addingTimeInterval(8)
+        withAnimation(Theme.spring) { entries[0].state.pinned = true }
+    }
+
     // MARK: - Reiter verschieben
 
     private func dragMoved(_ index: Int) {
@@ -196,6 +206,7 @@ final class NotchController {
             }
             if inside {
                 entries[i].outsideSince = nil
+                entries[i].holdOpenUntil = nil
                 if entries[i].insideSince == nil { entries[i].insideSince = now }
                 if !e.state.hovering, let since = entries[i].insideSince, now.timeIntervalSince(since) > 0.18 {
                     e.state.hovering = true
@@ -207,7 +218,8 @@ final class NotchController {
                     e.state.hovering = false
                 }
                 // Per Klick geöffnete Liste schließt sich, wenn die Maus eine Weile weg ist.
-                if e.state.pinned, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 1.5 {
+                if e.state.pinned, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 1.5,
+                   (e.holdOpenUntil ?? .distantPast) < now {
                     withAnimation(Theme.spring) { e.state.pinned = false }
                 }
             }

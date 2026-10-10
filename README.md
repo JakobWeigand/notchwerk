@@ -18,7 +18,7 @@ Notchwerk ist ein privates Hobbyprojekt von Jakob Weigand. Es ist kostenlos, ver
 
 | Zustand | Am Notch | Auf Bildschirmen ohne Notch |
 |---|---|---|
-| Ruhe | dünner orangener Rand um den Notch | Claude-Funke oben rechts, Klick öffnet die Liste |
+| Ruhe | dünner orangener Rand um den Notch | das Claude-Maskottchen oben rechts, ohne Kasten und Rand. Es blinzelt, schaut sich um und winkt ab und zu. Klick öffnet die Liste |
 | Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen. Überfahren zeigt die Sitzungen, die gerade arbeiten | Pille mit aktueller Aktion, Klick zeigt die Sitzungen |
 | Claude braucht eine Freigabe | Notch klappt auf, pulsiert und zeigt Befehl mit **Erlauben / Immer erlauben / Ablehnen / Im Terminal** | gleiche Karte oben rechts |
 | Claude hat eine Frage | Frage und Antwortmöglichkeiten | gleich |
@@ -31,14 +31,42 @@ Weitere Punkte
 * Erkennt automatisch ob ein Notch da ist. Bei zugeklapptem MacBook an Monitor, Maus und Tastatur erscheint die Anzeige oben rechts (oder oben mittig, umstellbar im Menü).
 * Es wird nur gezeigt, was gerade passiert: Sitzungen, die arbeiten oder dich brauchen. Fertige Sitzungen verschwinden wieder. „Wartet“ steht nur da, wenn Claude wirklich eine Freigabe oder Antwort braucht.
 * Jede Zeile zeigt, woher die Sitzung kommt: **Terminal**, **VS Code**, **Claude App** (dort mit dem Chat-Titel). Ein Klick auf die Zeile holt genau dieses Fenster nach vorn: den Tab im Terminal, das Projektfenster in VS Code oder den Chat in der Claude App.
-* Die Liste erscheint beim Überfahren des Notch (oben rechts per Klick auf den Funken) und verschwindet, sobald die Maus wieder weg ist. Bis zu zwei Zeilen sind sofort zu sehen, bei mehr lässt sich scrollen. Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
-* Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt.
+* Die Liste erscheint beim Überfahren des Notch (oben rechts per Klick auf das Maskottchen) und verschwindet, sobald die Maus wieder weg ist. Bis zu zwei Zeilen sind sofort zu sehen, bei mehr lässt sich scrollen. Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
+* Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt. Bei mehreren Konten eine Zeile je Konto.
 * Der Abstand des orangenen Rands unter dem Notch ist einstellbar (Standard 1 mm), damit der echte Notch nicht hervorschaut.
-* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad oben links in der aufgeklappten Liste oder über das ✦ Symbol in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Notchwerk eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
-* **Schwebender Reiter** statt Notch: In den Einstellungen unter „Anzeigeart“ wählbar. Der kleine Funke lässt sich mit der Maus an eine beliebige Stelle ziehen, bleibt im Vordergrund, wandert auf jeden Schreibtisch mit und öffnet die Liste beim Überfahren. Praktisch, wenn der Notch beim Surfen zu leicht ausgelöst wird.
+* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad oben links in der aufgeklappten Liste oder über das Maskottchen in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Notchwerk eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
+* **Schwebender Reiter** statt Notch: In den Einstellungen unter „Anzeigeart“ wählbar. Das kleine Maskottchen lässt sich mit der Maus an eine beliebige Stelle ziehen, bleibt im Vordergrund, wandert auf jeden Schreibtisch mit und öffnet die Liste beim Überfahren. Praktisch, wenn der Notch beim Surfen zu leicht ausgelöst wird.
 * Abgebrochene Sitzungen (Esc, Stopp, Fenster zu) verschwinden von selbst: Die App merkt, wenn der Claude Code Prozess weg ist oder im Transkript „[Request interrupted by user]“ steht.
-* Im ✦ Menü stehen die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude.
+* Im Menü hinter dem Maskottchen in der Menüleiste stehen die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude. Solange Claude arbeitet, läuft das Maskottchen dort mit; braucht Claude dich, winkt es (abschaltbar).
 * Wenn die App nicht läuft, merkt Claude Code nichts davon und fragt ganz normal im Terminal.
+
+### Mehrere Claude Code Konten
+
+Claude Code trennt Konten über den Konfigurationsordner: Das erste Konto liegt in `~/.claude`, ein zweites zum Beispiel in `~/.claude-arbeit` und läuft mit `CLAUDE_CONFIG_DIR="$HOME/.claude-arbeit" claude`. Jeder Ordner hat seine eigene Anmeldung, eigene Einstellungen und eigene Limits.
+
+In den Einstellungen unter **Konten**:
+
+* **Anlegen und anmelden …** legt den Ordner an, verbindet ihn mit Notchwerk und öffnet ein Terminal, in dem du dich mit dem zweiten Konto anmeldest.
+* Schon eingerichtete Ordner (`~/.claude-…`) findet die App von selbst und bietet **Übernehmen** an. Andere Orte gehen über **Vorhandenen Ordner wählen …**.
+* **Befehl kopieren** legt einen Kurzbefehl für `~/.zshrc` in die Zwischenablage, z.B. `alias claude-arbeit='CLAUDE_CONFIG_DIR="$HOME/.claude-arbeit" claude'`.
+* Startest du Claude Code mit einem Ordner, den die App noch nicht kennt, nimmt sie ihn als weiteres Konto auf.
+
+Sitzungen tragen dann den Kontonamen, und die Nutzung erscheint je Konto, in der Liste, im Menü und in den Widgets.
+
+### Widgets
+
+Ab macOS 14 bringt die App Widgets für den Schreibtisch und die Mitteilungszentrale mit. Einschalten unter Einstellungen › **Widgets**, dann Rechtsklick auf den Schreibtisch › **Widgets bearbeiten …** › nach „Notchwerk“ suchen.
+
+| Widget | Größen | Zeigt |
+|---|---|---|
+| Sitzungslimit | klein, mittel | 5-Stunden-Limit mit Ring und Zeit bis zum Zurücksetzen |
+| Wochenlimit | klein, mittel | Wochenlimit über alle Modelle |
+| Fable-5-Limit | klein, mittel | eigenes Wochenlimit für Fable 5 |
+| Übersicht | klein, mittel, groß | Sitzungs- und Wochenlimit zusammen |
+| Übersicht mit Fable 5 | klein, mittel, groß | Sitzung, Woche und Fable 5 zusammen |
+| Alle Konten | mittel, groß | alle Konten nebeneinander |
+
+Ein Klick auf ein Widget klappt die Liste auf. Die Widgets laufen in einer Sandbox ohne Netz und ohne Schlüsselbund. Sie lesen nur die Prozentwerte und Zeitpunkte, die Notchwerk in `~/.claude-notch/widget/usage.json` ablegt. Damit die Zahlen frisch bleiben, fragt die App bei eingeschalteten Widgets im Hintergrund nach (Standard alle 15 Minuten, einstellbar).
 
 ## Schnellstart ohne Kompilieren
 
@@ -62,17 +90,19 @@ Damit du vor dem Installieren weißt, worauf du dich einlässt. Alles davon läs
 |---|---|---|---|
 | Die App selbst | `/Applications/Notchwerk.app` | beim Installieren | in den Papierkorb ziehen |
 | Hook-Skript, Port und Token | `~/.claude-notch/` (nur für dich lesbar) | beim Verbinden bzw. bei jedem App-Start | Ordner löschen |
-| Hook-Einträge | `~/.claude/settings.json` (vorher Sicherung `settings.json.claude-notch-backup`) | nur nach deinem Klick auf **Verbinden** | Menü → **Verbindung entfernen** oder `uninstall.sh` |
+| Hook-Einträge | `~/.claude/settings.json` und bei weiteren Konten deren `settings.json` (vorher je eine Sicherung `settings.json.claude-notch-backup`) | nur nach deinem Klick auf **Verbinden** bzw. beim Anlegen eines Kontos | Menü → **Verbindung entfernen** oder `uninstall.sh` |
+| Ordner für ein weiteres Konto, Startskript | z.B. `~/.claude-arbeit`, `~/.claude-notch/anmelden-arbeit.command` | nur bei **Anlegen und anmelden** | Konto entfernen, Ordner löschen |
+| Daten für die Widgets | `~/.claude-notch/widget/usage.json` (nur Prozentwerte und Zeitpunkte, keine Tokens) | nur wenn die Widgets eingeschaltet sind | Widgets ausschalten |
 | Anmeldeobjekt | Systemeinstellungen → Anmeldeobjekte | erst nach **Verbinden** | Menü → **Beim Anmelden starten** abwählen |
 | Einstellungen | `defaults` unter `io.github.jakobweigand.claude-notch` | beim ersten Ändern | `uninstall.sh` |
 
 Dialoge, die macOS zeigen kann, und was sie bedeuten:
 
 * **„Notchwerk möchte Terminal steuern“**: nur wenn du eine Terminal-Sitzung in der Liste anklickst, damit die App den richtigen Tab nach vorn holt. Ablehnen ist folgenlos, dann wird nur das Terminal aktiviert.
-* **„Notchwerk möchte deine vertraulichen Informationen in ‚Claude Code-credentials‘ verwenden“**: nur wenn du die Nutzungsanzeige in den Einstellungen eingeschaltet hast (Standard aus). Siehe Sicherheit.
+* **„Notchwerk möchte deine vertraulichen Informationen in ‚Claude Code-credentials‘ verwenden“**: nur wenn du die Nutzungsanzeige oder die Widgets in den Einstellungen eingeschaltet hast (beides Standard aus), einmal je Konto. Siehe Sicherheit.
 * **Gatekeeper-Warnung** beim ersten Start: weil die App nicht bei Apple notarisiert ist. Die Zeile im Schnellstart hebt die Sperre nur für diese eine App auf. Wer das nicht möchte, baut selbst aus dem Quellcode.
 
-Was die App nie tut: ins Netz gehen (außer der optionalen Nutzungsanzeige), Dateien deiner Projekte lesen oder ändern, Freigaben ohne deinen Klick erteilen, im Hintergrund weiterlaufen, wenn du sie beendest. Läuft sie nicht oder stürzt sie ab, merkt Claude Code nur eine Sekunde Verzögerung pro Ereignis und fragt wie gewohnt im Terminal.
+Was die App nie tut: ins Netz gehen (außer der optionalen Nutzungsanzeige und den Widgets), Dateien deiner Projekte lesen oder ändern, Freigaben ohne deinen Klick erteilen, im Hintergrund weiterlaufen, wenn du sie beendest. Läuft sie nicht oder stürzt sie ab, merkt Claude Code nur eine Sekunde Verzögerung pro Ereignis und fragt wie gewohnt im Terminal.
 
 ## Installation aus dem Quellcode
 
@@ -106,7 +136,7 @@ Weil die App nicht von Apple notarisiert ist (das kostet 99 $ im Jahr), muss man
 
 ## Sicherheit
 
-Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins Internet geht nur die optionale Nutzungsanzeige (siehe unten), und die ist standardmäßig aus.
+Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins Internet geht nur die optionale Nutzungsabfrage für Liste und Widgets (siehe unten), und die ist standardmäßig aus.
 
 * Claude Code ruft bei jedem Ereignis `~/.claude-notch/hook.sh` auf. Das Skript schickt die Daten an die App, die **nur auf 127.0.0.1** lauscht. Aus dem Netzwerk ist sie nicht erreichbar.
 * Bei jedem App-Start entsteht ein neuer zufälliger Token (256 Bit) in `~/.claude-notch/auth-header` mit Rechten `600`. Nur dein Benutzer kann ihn lesen. Anfragen ohne passenden Token lehnt die App ab. So kann kein anderes Programm oder anderer Benutzer heimlich Freigaben erteilen.
@@ -114,7 +144,7 @@ Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins I
 * Läuft die App nicht oder antwortest du nicht innerhalb der Wartezeit (Standard 10 Minuten), gibt der Hook keine Entscheidung zurück. Claude Code fragt dann wie gewohnt im Terminal. Es wird also nie automatisch etwas erlaubt.
 * Im öffentlichen Repository liegen keine Geheimnisse. Jeder Nutzer bekommt seinen eigenen Token.
 * „Immer erlauben“ übernimmt genau die Regel, die Claude Code selbst vorschlägt.
-* Die **Nutzungsanzeige** ist standardmäßig aus. Schaltest du sie ein, liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“) und fragt nur die Limits bei `api.anthropic.com` ab, dieselbe Stelle wie `/usage` in Claude Code. macOS fragt dabei nach; mit **Immer erlauben** nie wieder. Abgefragt wird nur beim Öffnen der Liste, nie im Hintergrund, und nichts wird gespeichert. Beachte: Anthropic sieht den Login-Token laut seinen Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, du nutzt sie auf eigene Verantwortung.
+* Die **Nutzungsanzeige** und die **Widgets** sind standardmäßig aus. Schaltest du sie ein, liest die App den Anmelde-Token von Claude Code aus dem Schlüsselbund („Claude Code-credentials“, bei weiteren Konten mit einer Endung je Ordner) und fragt nur die Limits bei `api.anthropic.com` ab, dieselbe Stelle wie `/usage` in Claude Code. macOS fragt dabei nach; mit **Immer erlauben** nie wieder. Nur für die Anzeige abgefragt wird beim Öffnen der Liste; mit Widgets zusätzlich im Hintergrund im eingestellten Abstand (frühestens alle 10 Minuten, bei einer Sperre durch den Server automatisch seltener). Der Token bleibt nur im Arbeitsspeicher. Auf die Platte kommen nur die Prozentwerte für die Widgets. Beachte: Anthropic sieht den Login-Token laut seinen Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, du nutzt sie auf eigene Verantwortung.
 
 ## Datenschutz
 
@@ -141,7 +171,8 @@ Woher eine Sitzung kommt, liest `hook.sh` aus der Prozesskette (welche App hat C
 * Normale Chats in der Claude Desktop App und auf claude.ai im Browser bieten keine Schnittstelle. Hier erkennt die App nur, dass Claude geöffnet wurde (Begrüßung und Rand). Ob dort gerade eine Antwort entsteht, lässt sich von außen nicht zuverlässig erkennen. Angezeigt wird alles aus Claude Code: Terminal, VS Code und der Code-Tab der Desktop App.
 * In VS Code holt der Klick das Fenster nach vorn, in dem der Projektordner offen ist. Läuft Claude Code dort in einem Unterordner, öffnet VS Code diesen Ordner in einem neuen Fenster.
 * Fragen über `AskUserQuestion` im Notch zu beantworten ist experimentell und standardmäßig aus. Dann zeigt der Notch die Frage an und du antwortest im Terminal.
-* Benötigt macOS 13 Ventura oder neuer.
+* Benötigt macOS 13 Ventura oder neuer, die Widgets macOS 14 Sonoma.
+* Wie viel bei einem Konto noch frei ist, kann die App nur zeigen, wenn Claude Code mit diesem Konto schon einmal angemeldet war. Ist die Anmeldung abgelaufen, das Konto einmal in Claude Code benutzen.
 
 ## Selbst entwickeln
 
@@ -157,7 +188,7 @@ Nur Command Line Tools ohne Xcode? Dann kann `swift build` mit dem neuesten SDK 
 SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk swift build
 ```
 
-Der Code liegt in `Sources/Notchwerk`
+Der Code liegt in `Sources/Notchwerk` (die App), `Sources/NotchwerkWidgets` (die Widgets) und `Sources/NotchwerkShared` (Farben, Logo und die Datei für die Widgets)
 
 * `NotchView.swift` Aussehen und Animationen
 * `SettingsWindow.swift` das Einstellungsfenster
@@ -167,7 +198,8 @@ Der Code liegt in `Sources/Notchwerk`
 * `SessionOrigin.swift` Terminal, VS Code oder Claude App? (aus der Prozesskette)
 * `DesktopSessions.swift` Chat-Titel und Link für Sitzungen aus der Claude Desktop App
 * `SessionFocus.swift` holt beim Klick das richtige Fenster nach vorn
-* `Usage.swift` Nutzung (Sitzungs- und Wochenlimit) wie bei `/usage`
+* `Usage.swift` Nutzung (Sitzungs- und Wochenlimit) je Konto wie bei `/usage`, versorgt auch die Widgets
+* `Accounts.swift` mehrere Claude Code Konten (Konfigurationsordner, Schlüsselbund, Anmeldung)
 * `EventServer.swift` lokaler Server mit Token-Prüfung
-* `HookInstaller.swift` Hook-Skript und Eintrag in `~/.claude/settings.json`
-* `Mascot.swift` das kleine Pixel-Maskottchen
+* `HookInstaller.swift` Hook-Skript und Eintrag in die `settings.json` jedes Kontos
+* `Mascot.swift` das animierte Maskottchen (das Logo selbst steht in `NotchwerkShared/Brand.swift`)

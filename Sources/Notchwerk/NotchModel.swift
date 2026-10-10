@@ -19,6 +19,8 @@ struct SessionInfo: Identifiable, Equatable {
     /// Transkript der Sitzung. Darin steht, wenn du eine Antwort abgebrochen hast.
     var transcriptPath: String?
     var transcriptSize: UInt64 = 0
+    /// Claude Code Konto, mit dem die Sitzung läuft (siehe ClaudeAccount).
+    var accountID: String?
 
     var projectName: String {
         if cwd == FileManager.default.homeDirectoryForCurrentUser.path { return "Home" }
@@ -146,6 +148,36 @@ final class NotchModel: ObservableObject {
     var needsAttention: Bool { sessions.values.contains { $0.state == .waiting } }
     var currentRequest: PendingRequest? { pending.first }
 
+    // MARK: - Konten
+
+    /// Welches Konto eine Sitzung nutzt: zuerst CLAUDE_CONFIG_DIR, wie der Hook ihn meldet,
+    /// sonst der Pfad des Transkripts. Meldet sich ein Ordner, den Notchwerk noch nicht kennt
+    /// (z.B. weil du die settings.json samt Hook kopiert hast), kommt er als neues Konto dazu.
+    private func account(for event: [String: Any], transcript: String?) -> ClaudeAccount? {
+        guard let raw = event["_notch_config"] as? String, let colon = raw.firstIndex(of: ":") else {
+            return prefs.account(forTranscript: transcript)
+        }
+        let isSet = raw[..<colon] == "1"
+        let value = String(raw[raw.index(after: colon)...])
+        guard isSet, !value.isEmpty else {
+            prefs.rememberEnvValue(nil, for: ClaudeAccount.defaultID)
+            return prefs.account(id: ClaudeAccount.defaultID)
+        }
+        let dir = ClaudeAccount.normalize(value)
+        guard dir.hasPrefix("/") else { return prefs.account(forTranscript: transcript) }
+        if let known = prefs.accounts.first(where: { $0.configDir == dir }) {
+            prefs.rememberEnvValue(value, for: known.id)
+            return prefs.account(id: known.id)
+        }
+        var added = ClaudeAccount.make(name: ClaudeAccount.suggestedName(forDir: dir), configDir: dir)
+        added.envValue = value
+        prefs.accounts.append(added)
+        showBanner(Banner(style: .info, title: "Weiteres Konto erkannt",
+                          subtitle: "„\(added.name)“ (\(added.displayPath)). Umbenennen in den Einstellungen."),
+                   duration: 4)
+        return added
+    }
+
     // MARK: - Ereignisse von Claude Code
 
     func handle(event: [String: Any], reply: @escaping (Data?) -> Void, onClose: (@escaping () -> Void) -> Void) {
@@ -156,6 +188,9 @@ final class NotchModel: ObservableObject {
         if !cwd.isEmpty { session.cwd = cwd }
         if let transcript = event["transcript_path"] as? String, !transcript.isEmpty {
             session.transcriptPath = transcript
+        }
+        if let account = account(for: event, transcript: session.transcriptPath) {
+            session.accountID = account.id
         }
         if let chain = event["_notch_origin"] as? String, !chain.isEmpty {
             let origin = SessionOrigin.parse(chain)

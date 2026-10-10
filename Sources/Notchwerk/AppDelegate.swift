@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import NotchwerkShared
 import ServiceManagement
 import SwiftUI
 
@@ -12,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
+    private var iconTimer: Timer?
+    private var iconMood: Mascot.Mood?
+    private var iconPose: ClaudeLogo.Pose?
 
     static let claudeBundleIDs: Set<String> = ["com.anthropic.claudefordesktop", "com.anthropic.claude"]
 
@@ -21,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller?.start()
         setupStatusItem()
         watchClaudeApp()
+        UsageMonitor.shared.start()
 
         if !HookInstaller.isInstalled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -34,6 +39,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
         HookInstaller.cleanupRuntime()
+    }
+
+    /// notchwerk://usage, z.B. nach einem Klick auf ein Widget: die Liste mit der Nutzung aufklappen.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.contains(where: { $0.scheme == "notchwerk" && $0.host == "usage" }) else { return }
+        if prefs.showUsage {
+            controller?.showList()
+        } else {
+            SettingsWindowController.shared.show()
+        }
     }
 
     // MARK: - Server
@@ -135,26 +150,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menüleiste
 
     private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = item.button {
-            let image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Notchwerk")
-            image?.isTemplate = true
-            button.image = image
-        }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
         statusItem = item
         item.button?.appearsDisabled = !prefs.enabled
+        setMenuBarPose(.logo)
         prefs.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.statusItem?.button?.appearsDisabled = !self.prefs.enabled
+                    self.updateMenuBarIcon()
                 }
             }
             .store(in: &cancellables)
+        model.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.updateMenuBarIcon() }
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Das Maskottchen in der Menüleiste läuft, solange Claude arbeitet, und winkt, wenn Claude
+    /// dich braucht. Sonst steht es still, damit die App im Ruhezustand nicht ständig zeichnet.
+    private func updateMenuBarIcon() {
+        var mood = Mascot.Mood.idle
+        if prefs.enabled && prefs.animateMenuBarIcon {
+            if model.needsAttention || model.currentRequest != nil {
+                mood = .attention
+            } else if model.isWorking {
+                mood = .working
+            }
+        }
+        guard mood != iconMood else { return }
+        iconMood = mood
+        iconTimer?.invalidate()
+        iconTimer = nil
+        guard mood != .idle else {
+            setMenuBarPose(.logo)
+            return
+        }
+        setMenuBarPose(Mascot.pose(mood, at: Date.timeIntervalSinceReferenceDate).0)
+        let timer = Timer(timeInterval: Mascot.frameInterval(mood), repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.setMenuBarPose(Mascot.pose(mood, at: Date.timeIntervalSinceReferenceDate).0)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        iconTimer = timer
+    }
+
+    private func setMenuBarPose(_ pose: ClaudeLogo.Pose) {
+        guard pose != iconPose else { return }
+        iconPose = pose
+        statusItem?.button?.image = ClaudeLogo.menuBarImage(pose)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -168,11 +221,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
-        if prefs.showUsage, let snap = UsageMonitor.shared.snapshot {
-            let parts = snap.windows.prefix(3).map { "\($0.title) \(Int($0.percent.rounded())) %" }
-            let usage = NSMenuItem(title: "Nutzung: " + parts.joined(separator: " · "), action: nil, keyEquivalent: "")
-            usage.isEnabled = false
-            menu.addItem(usage)
+        if prefs.showUsage || prefs.widgetsEnabled {
+            let accounts = prefs.accounts
+            for account in accounts {
+                guard let snap = UsageMonitor.shared.state(for: account).snapshot else { continue }
+                let parts = snap.windows.prefix(3).map { "\($0.title) \(Int($0.percent.rounded())) %" }
+                let label = accounts.count > 1 ? "\(account.name): " : "Nutzung: "
+                let usage = NSMenuItem(title: label + parts.joined(separator: " · "), action: nil, keyEquivalent: "")
+                usage.isEnabled = false
+                menu.addItem(usage)
+            }
         }
         for s in model.activeSessions {
             let text = s.detail.isEmpty ? s.displayName : "\(s.displayName)  ·  \(s.detail)"
@@ -187,11 +245,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(toggle("Anzeige pausieren", !prefs.enabled, #selector(togglePause)))
         menu.addItem(.separator())
 
-        if HookInstaller.isInstalled {
-            menu.addItem(item("Mit Claude Code verbunden ✓", #selector(noop), enabled: false))
-            menu.addItem(item("Verbindung entfernen", #selector(uninstallHooks)))
-        } else {
+        let accounts = prefs.accounts
+        let connected = accounts.filter(HookInstaller.isInstalled(in:)).count
+        if connected == 0 {
             menu.addItem(item("Mit Claude Code verbinden …", #selector(installHooks)))
+        } else {
+            let title = connected == accounts.count
+                ? "Mit Claude Code verbunden ✓"
+                : "Verbunden mit \(connected) von \(accounts.count) Konten"
+            menu.addItem(item(title, #selector(noop), enabled: false))
+            if connected < accounts.count {
+                menu.addItem(item("Alle Konten verbinden", #selector(installHooks)))
+            }
+            menu.addItem(item("Verbindung entfernen", #selector(uninstallHooks)))
         }
         menu.addItem(item("Demo abspielen", #selector(playDemo), key: "d"))
         menu.addItem(.separator())
@@ -200,6 +266,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(toggle("Beim Überfahren aufklappen", prefs.expandOnHover, #selector(toggleHover)))
         menu.addItem(toggle("Arbeitende Sitzungen unter dem Notch zeigen", prefs.showSessionsInNotch, #selector(toggleShowSessions)))
         menu.addItem(toggle("Nutzung (Sitzungs- und Wochenlimit) zeigen", prefs.showUsage, #selector(toggleUsage)))
+        menu.addItem(toggle("Widgets mit Nutzung versorgen", prefs.widgetsEnabled, #selector(toggleWidgets)))
+        menu.addItem(toggle("Maskottchen in der Menüleiste animieren", prefs.animateMenuBarIcon, #selector(toggleMenuBarAnimation)))
 
         let rowsItem = NSMenuItem(title: "Zeilen unter dem Notch", action: nil, keyEquivalent: "")
         let rowsMenu = NSMenu()
@@ -283,6 +351,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleSounds() { prefs.playSounds.toggle() }
     @objc private func toggleAllScreens() { prefs.showOnAllScreens.toggle() }
     @objc private func toggleShowSessions() { prefs.showSessionsInNotch.toggle() }
+    @objc private func toggleWidgets() { prefs.widgetsEnabled.toggle() }
+    @objc private func toggleMenuBarAnimation() { prefs.animateMenuBarIcon.toggle() }
     @objc private func toggleUsage() {
         prefs.showUsage.toggle()
         if !prefs.showUsage { UsageMonitor.shared.stop() }

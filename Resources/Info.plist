@@ -24,6 +24,18 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- notchwerk://usage: ein Klick auf ein Widget klappt die Liste mit der Nutzung auf. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>io.github.jakobweigand.claude-notch</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>notchwerk</string>
+            </array>
+        </dict>
+    </array>
     <key>NSAppleEventsUsageDescription</key>
     <string>Notchwerk holt auf Klick den Terminal-Tab nach vorn, in dem eine Claude Code Sitzung läuft.</string>
     <key>NSHumanReadableCopyright</key>

@@ -13,7 +13,6 @@ enum HookInstaller {
     static var scriptURL: URL { dir.appendingPathComponent("hook.sh") }
     static var portURL: URL { dir.appendingPathComponent("port") }
     static var headerURL: URL { dir.appendingPathComponent("auth-header") }
-    static var settingsURL: URL { home.appendingPathComponent(".claude/settings.json") }
 
     /// Ereignis, Sekunden bis curl aufgibt, Timeout für Claude Code.
     static let events: [(name: String, maxTime: Int, timeout: Int)] = [
@@ -30,7 +29,7 @@ enum HookInstaller {
 
     static let script = """
     #!/bin/bash
-    # Notchwerk Hook (Version 2): leitet Claude Code Ereignisse an die Notch App weiter.
+    # Notchwerk Hook (Version 3): leitet Claude Code Ereignisse an die Notch App weiter.
     # Läuft die App nicht, passiert nichts und Claude Code arbeitet ganz normal weiter.
     DIR="$HOME/.claude-notch"
     MAX="${1:-2}"
@@ -52,9 +51,11 @@ enum HookInstaller {
       P="$PP"
     done
     ORIGIN_B64="$(printf '%s' "$ORIGIN" | /usr/bin/base64 | /usr/bin/tr -d '\\n')"
+    # Konto: CLAUDE_CONFIG_DIR genau so, wie Claude Code es sieht ("1:<Pfad>" gesetzt, ":" nicht gesetzt).
+    CONFIG_B64="$(printf '%s' "${CLAUDE_CONFIG_DIR+1}:${CLAUDE_CONFIG_DIR-}" | /usr/bin/base64 | /usr/bin/tr -d '\\n')"
     printf '%s' "$INPUT" | /usr/bin/curl -s --fail --connect-timeout 1 --max-time "$MAX" \\
       -H @"$DIR/auth-header" -H 'Content-Type: application/json' \\
-      -H "X-Claude-Notch-Origin: $ORIGIN_B64" \\
+      -H "X-Claude-Notch-Origin: $ORIGIN_B64" -H "X-Claude-Notch-Config: $CONFIG_B64" \\
       --data-binary @- "http://127.0.0.1:$PORT/event" 2>/dev/null
     exit 0
 
@@ -79,26 +80,49 @@ enum HookInstaller {
         try? fm.removeItem(at: headerURL)
     }
 
-    // MARK: - Installation in ~/.claude/settings.json
+    // MARK: - Installation in <Konfigurationsordner>/settings.json
 
-    static var isInstalled: Bool {
-        guard let data = try? Data(contentsOf: settingsURL),
+    /// Jedes Konto (jeder Konfigurationsordner) hat seine eigene settings.json. Damit Sitzungen
+    /// aller Konten hier erscheinen, kommt der Hook in jede davon.
+    @MainActor static var accounts: [ClaudeAccount] { Preferences.shared.accounts }
+
+    /// Mit dem Standardkonto (~/.claude) verbunden. Danach richtet sich die Frage beim ersten Start.
+    @MainActor static var isInstalled: Bool { isInstalled(in: .makeDefault()) }
+
+    /// Mit allen eingetragenen Konten verbunden.
+    @MainActor static var isInstalledEverywhere: Bool { accounts.allSatisfy(isInstalled(in:)) }
+
+    static func isInstalled(in account: ClaudeAccount) -> Bool {
+        guard let data = try? Data(contentsOf: account.settingsURL),
               let text = String(data: data, encoding: .utf8) else { return false }
         return text.contains(scriptURL.path)
     }
 
     enum InstallError: LocalizedError {
-        case invalidSettings
+        case invalidSettings(String)
 
         var errorDescription: String? {
-            "~/.claude/settings.json ist kein gültiges JSON. Bitte zuerst reparieren, ich ändere sonst nichts."
+            switch self {
+            case .invalidSettings(let path):
+                return "\(path) ist kein gültiges JSON. Bitte zuerst reparieren, ich ändere sonst nichts."
+            }
         }
     }
 
-    static func install() throws {
+    /// Mit allen eingetragenen Konten verbinden.
+    @MainActor static func install() throws {
+        for account in accounts { try install(into: account) }
+    }
+
+    /// Bei allen eingetragenen Konten wieder entfernen.
+    @MainActor static func uninstall() throws {
+        for account in accounts where isInstalled(in: account) { try uninstall(from: account) }
+    }
+
+    static func install(into account: ClaudeAccount) throws {
         try ensureDir()
         try writeScript()
-        try updateSettings { hooks in
+        try updateSettings(at: account.settingsURL, display: account.displayPath + "/settings.json") { hooks in
             for e in events {
                 var list = hooks[e.name] as? [[String: Any]] ?? []
                 list.removeAll(where: isOurs)
@@ -114,8 +138,9 @@ enum HookInstaller {
         }
     }
 
-    static func uninstall() throws {
-        try updateSettings { hooks in
+    static func uninstall(from account: ClaudeAccount) throws {
+        guard fm.fileExists(atPath: account.settingsURL.path) else { return }
+        try updateSettings(at: account.settingsURL, display: account.displayPath + "/settings.json") { hooks in
             for (name, value) in hooks {
                 guard var list = value as? [[String: Any]] else { continue }
                 list.removeAll(where: isOurs)
@@ -129,14 +154,15 @@ enum HookInstaller {
         return inner.contains { ($0["command"] as? String)?.contains(".claude-notch/hook.sh") == true }
     }
 
-    private static func updateSettings(_ change: (inout [String: Any]) -> Void) throws {
+    private static func updateSettings(at settingsURL: URL, display: String,
+                                       _ change: (inout [String: Any]) -> Void) throws {
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         var root: [String: Any] = [:]
         if fm.fileExists(atPath: settingsURL.path) {
             let data = try Data(contentsOf: settingsURL)
             if !data.isEmpty {
                 guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    throw InstallError.invalidSettings
+                    throw InstallError.invalidSettings(display)
                 }
                 root = obj
             }

@@ -1,10 +1,12 @@
 #!/bin/bash
-# Entfernt Notchwerk, die Hooks in ~/.claude/settings.json und ~/.claude-notch.
+# Entfernt Notchwerk, die Hooks aus den settings.json aller Konten (~/.claude, ~/.claude-arbeit …)
+# und ~/.claude-notch. Konten in Ordnern außerhalb des Home-Ordners bitte vorher in der App trennen.
 set -euo pipefail
-pkill -x Notchwerk; pkill -x ClaudeNotch >/dev/null 2>&1 || true
+pkill -x Notchwerk >/dev/null 2>&1 || true
+pkill -x ClaudeNotch >/dev/null 2>&1 || true
 
-SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS" ] && grep -q ".claude-notch/hook.sh" "$SETTINGS"; then
+for SETTINGS in "$HOME"/.claude/settings.json "$HOME"/.claude[-_]*/settings.json; do
+  [ -f "$SETTINGS" ] && grep -q ".claude-notch/hook.sh" "$SETTINGS" || continue
   cp "$SETTINGS" "$SETTINGS.claude-notch-backup"
   SETTINGS="$SETTINGS" /usr/bin/osascript -l JavaScript <<'JXA'
 ObjC.import('Foundation');
@@ -20,8 +22,8 @@ for (const name of Object.keys(hooks)) {
 if (Object.keys(hooks).length === 0) delete root.hooks;
 $(JSON.stringify(root, null, 2)).writeToFileAtomicallyEncodingError(path, true, $.NSUTF8StringEncoding, null);
 JXA
-  echo "✓ Hooks entfernt (Sicherung: $SETTINGS.claude-notch-backup)"
-fi
+  echo "✓ Hooks entfernt aus $SETTINGS (Sicherung: $SETTINGS.claude-notch-backup)"
+done
 
 rm -rf "$HOME/.claude-notch"
 rm -rf "/Applications/Notchwerk.app" "/Applications/Claude Notch.app"

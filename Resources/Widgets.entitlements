@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- macOS lädt Widgets nur in einer Sandbox. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- Einzige Ausnahme: die Datei mit den Prozentwerten lesen, die Notchwerk ablegt.
+         Kein Netz, kein Schlüsselbund, sonst keine Dateien. Pfad wie WidgetFeedStore.relativeDirectory. -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+    <array>
+        <string>/.claude-notch/widget/</string>
+    </array>
+</dict>
+</plist>

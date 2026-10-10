@@ -7,8 +7,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.3.0}"
-BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
+VERSION="${VERSION:-0.4.0}"
+# Fortlaufend, bei jedem Build größer: Minuten seit 1.1.2026. macOS merkt sich die Widgets je
+# Build-Nummer und übernimmt neue Widgets erst mit einer höheren. Kurz, weil zu lange Nummern stören.
+BUILD="${BUILD:-$(( ($(date +%s) - 1767225600) / 60 ))}"
 ARGS=(-c release)
 for arch in ${ARCHS:-}; do ARGS+=(--arch "$arch"); done
 
@@ -46,18 +48,31 @@ if ! swift build "${ARGS[@]}" >"$LOG" 2>&1; then
 fi
 grep -E "Compiling|Build complete" "$LOG" | tail -1
 rm -f "$LOG"
-BIN="$(swift build "${ARGS[@]}" --show-bin-path)/Notchwerk"
+BIN_DIR="$(swift build "${ARGS[@]}" --show-bin-path)"
+
+# Die Widgets starten nur über den Einstieg für Erweiterungen (siehe Package.swift).
+# Ohne -q: grep würde sonst früh abbrechen, nm bekäme SIGPIPE und pipefail meldete einen Fehler.
+if ! nm -m "$BIN_DIR/NotchwerkWidgets" | grep "_NSExtensionMain (from Foundation)" >/dev/null; then
+  echo "✗ Den Widgets fehlt der Einstieg _NSExtensionMain, macOS würde sie nicht anbieten."
+  exit 1
+fi
 
 APP="dist/Notchwerk.app"
+APPEX="$APP/Contents/PlugIns/NotchwerkWidgets.appex"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/Notchwerk"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APPEX/Contents/MacOS"
+cp "$BIN_DIR/Notchwerk" "$APP/Contents/MacOS/Notchwerk"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
+cp "$BIN_DIR/NotchwerkWidgets" "$APPEX/Contents/MacOS/NotchwerkWidgets"
+sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Widgets-Info.plist > "$APPEX/Contents/Info.plist"
 
 if command -v iconutil >/dev/null 2>&1; then
   iconutil -c icns Resources/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 fi
 
-# Ad-hoc Signatur: kostenlos, kein Apple Developer Account nötig.
-codesign --force --deep --sign - "$APP"
+# Ad-hoc Signatur: kostenlos, kein Apple Developer Account nötig. Von innen nach außen und
+# ohne --deep: --deep würde den Widgets ihre Sandbox-Berechtigung nehmen, dann ignoriert macOS sie.
+codesign --force --sign - --timestamp=none --entitlements Resources/Widgets.entitlements "$APPEX"
+codesign --force --sign - --timestamp=none "$APP"
+codesign --verify --deep --strict "$APP"
 echo "✓ Fertig: $APP"

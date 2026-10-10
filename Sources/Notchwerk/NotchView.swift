@@ -1,3 +1,4 @@
+import NotchwerkShared
 import SwiftUI
 
 /// Zustand eines einzelnen Fensters (pro Bildschirm).
@@ -78,6 +79,8 @@ private struct NotchBody: View {
     }
     /// Zusätzlicher Abstand unter dem Notch, damit der Rand nicht am Notch klebt.
     private var ext: CGFloat { corner ? 0 : CGFloat(prefs.notchExtension) }
+    /// Ruhezustand oben rechts oder als Reiter: nur das Claude-Maskottchen, ohne Kasten und Rand.
+    private var bareLogo: Bool { corner && (presentation == .rim || presentation == .hidden) }
 
     var body: some View {
         ZStack(alignment: anchor.flipped ? .bottom : .top) {
@@ -100,13 +103,13 @@ private struct NotchBody: View {
 
     @ViewBuilder
     private var background: some View {
-        let rimVisible = presentation != .hidden
+        let rimVisible = presentation != .hidden && !bareLogo
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(attention || model.isWorking))) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             let pulse = attention ? 0.5 + 0.5 * sin(t * 4.2) : (model.isWorking ? 0.5 + 0.5 * sin(t * 2.2) : 0.35)
             let glow = rimVisible ? (open ? 0.55 : 0.35) + 0.45 * pulse : 0
             ZStack {
-                fillShape.fill(Color.black)
+                fillShape.fill(Color.black.opacity(bareLogo ? 0 : 1))
                 strokeShape
                     .stroke(Theme.orange.opacity(rimVisible ? 0.95 : 0),
                             style: StrokeStyle(lineWidth: open ? 1.6 : 1.4, lineCap: .round, lineJoin: .round))
@@ -209,16 +212,16 @@ private struct NotchBody: View {
         .padding(.horizontal, open ? topRadius + 4 : topRadius - 3)
     }
 
-    /// Kopfzeile für Bildschirme ohne Notch (oben rechts). Im Ruhezustand nur das Claude-Symbol.
+    /// Kopfzeile für Bildschirme ohne Notch (oben rechts). Im Ruhezustand nur das Claude-Maskottchen,
+    /// frei auf dem Schreibtisch, ohne Kasten. Der leichte Schatten hält es auf hellen Hintergründen sichtbar.
     @ViewBuilder
     private var cornerHeader: some View {
-        let idle = presentation == .rim || presentation == .hidden
+        let idle = bareLogo
         HStack(spacing: 10) {
             if idle {
                 Spacer(minLength: 0)
-                SparkShape()
-                    .fill(Theme.orange)
-                    .frame(width: 22, height: 22)
+                Mascot(mood: mascotMood, size: 24, cutOutEyes: true)
+                    .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
                     .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 Spacer(minLength: 0)
             } else {
@@ -415,34 +418,70 @@ private struct SessionListView: View {
                     .frame(height: 1)
                     .padding(.top, 6)
                 UsageView(maxGauges: maxGauges)
-                    .frame(height: Layout.usageHeight - 7)
+                    .frame(height: Layout.usageBlockHeight(Preferences.shared) - 7)
             }
         }
     }
 }
 
 /// Nutzung wie bei `/usage`: Ringe für Sitzungs- und Wochenlimit, dazu wie viel noch frei ist.
+/// Bei mehreren Konten eine Zeile je Konto, vorn der Name.
 private struct UsageView: View {
     let maxGauges: Int
     @ObservedObject private var monitor = UsageMonitor.shared
+    @ObservedObject private var prefs = Preferences.shared
+
+    var body: some View {
+        let accounts = Layout.usageAccounts(prefs)
+        let several = accounts.count > 1
+        VStack(spacing: 0) {
+            ForEach(accounts) { account in
+                UsageRow(account: account, state: monitor.state(for: account), showsName: several,
+                         maxGauges: several ? min(maxGauges, 2) : maxGauges)
+                    .frame(height: Layout.usageRowHeight)
+            }
+        }
+        .padding(.horizontal, 6)
+        .onAppear { monitor.refreshIfStale() }
+    }
+}
+
+private struct UsageRow: View {
+    let account: ClaudeAccount
+    let state: UsageMonitor.AccountUsage
+    let showsName: Bool
+    let maxGauges: Int
 
     var body: some View {
         HStack(spacing: 10) {
-            if let snap = monitor.snapshot {
+            if showsName {
+                Text(account.name)
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.orange)
+                    .lineLimit(1)
+                    .frame(width: 58, alignment: .leading)
+                    .help(account.displayPath)
+            }
+            if let snap = state.snapshot {
                 ForEach(snap.windows.prefix(maxGauges)) { window in
                     UsageGauge(window: window)
                 }
                 Spacer(minLength: 0)
+                if state.status != .ok && state.status != .loading {
+                    // Zahlen sind vom letzten Abruf, gerade klappt es nicht.
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                        .help("Stand \(snap.fetchedAt.formatted(date: .omitted, time: .shortened)): \(state.status.text)")
+                }
             } else {
-                Text(monitor.status.text)
+                Text(showsName ? state.status.text : "Nutzung: \(state.status.text)")
                     .font(.system(size: 10.5))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(2)
                 Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 6)
-        .onAppear { monitor.refreshIfStale() }
     }
 }
 
@@ -479,11 +518,7 @@ private struct UsageGauge: View {
         .help("\(window.title): \(used) % des Limits genutzt, \(window.remainingPercent) % frei")
     }
 
-    private var tint: Color {
-        if window.percent >= 85 { return Theme.deny }
-        if window.percent >= 60 { return Theme.orangeBright }
-        return Theme.orange
-    }
+    private var tint: Color { Brand.usageTint(window.percent) }
 }
 
 /// Eine Sitzung: Zustand, Name, was gerade passiert, woher sie kommt. Klick holt das Fenster nach vorn.
@@ -510,6 +545,15 @@ private struct SessionRow: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 4)
+            if let account = accountName {
+                Text(account)
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Theme.orange)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.orange.opacity(0.14)))
+            }
             let label = session.origin.label
             if !label.isEmpty {
                 Text(label)
@@ -530,6 +574,13 @@ private struct SessionRow: View {
         .onTapGesture(perform: action)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
         .help(session.cwd)
+    }
+
+    /// Kontoname, aber nur wenn es mehr als ein Konto gibt.
+    private var accountName: String? {
+        let prefs = Preferences.shared
+        guard prefs.accounts.count > 1, let id = session.accountID else { return nil }
+        return prefs.account(id: id)?.name
     }
 
     @ViewBuilder
