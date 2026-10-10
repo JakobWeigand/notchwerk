@@ -86,6 +86,19 @@ final class Preferences: ObservableObject {
     @Published var widgetRefreshMinutes: Int { didSet { defaults.set(widgetRefreshMinutes, forKey: "widgetRefreshMinutes") } }
     /// Das Maskottchen in der Menüleiste läuft mit, solange Claude arbeitet, und winkt, wenn Claude dich braucht.
     @Published var animateMenuBarIcon: Bool { didSet { defaults.set(animateMenuBarIcon, forKey: "animateMenuBarIcon") } }
+    /// Höhe des Maskottchens oben rechts und beim schwebenden Reiter, in Punkten.
+    @Published var mascotSize: Double { didSet { defaults.set(mascotSize, forKey: "mascotSize") } }
+    /// Projektordner (git-Checkout), aus dem die App gebaut wurde. Dann aktualisiert sie sich daraus
+    /// (git pull und bauen), sonst über GitHub Releases. Trägt scripts/install.sh ein.
+    @Published var sourceDir: String? { didSet { defaults.set(sourceDir, forKey: "sourceDir") } }
+    /// Einmal am Tag nachsehen, ob es eine neue Version gibt.
+    @Published var autoCheckUpdates: Bool { didSet { defaults.set(autoCheckUpdates, forKey: "autoCheckUpdates") } }
+
+    static let mascotSizeRange: ClosedRange<Double> = 20...80
+    /// Stufen fürs Menü. Klein ist die bisherige Größe.
+    static let mascotSizeChoices: [(title: String, value: Double)] = [
+        ("Klein", 24), ("Mittel", 36), ("Groß", 52), ("Sehr groß", 72),
+    ]
 
     /// Abstände für das Aktualisieren im Hintergrund. Seltener als alle 10 Minuten, weil
     /// api.anthropic.com häufige Abfragen schnell mit einer Sperre beantwortet.
@@ -113,6 +126,8 @@ final class Preferences: ObservableObject {
             "widgetsEnabled": false,
             "widgetRefreshMinutes": 15,
             "animateMenuBarIcon": true,
+            "mascotSize": 24.0,
+            "autoCheckUpdates": false,
         ])
         enabled = defaults.bool(forKey: "enabled")
         displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .notch
@@ -137,6 +152,9 @@ final class Preferences: ObservableObject {
         let minutes = defaults.integer(forKey: "widgetRefreshMinutes")
         widgetRefreshMinutes = Self.widgetRefreshChoices.contains(minutes) ? minutes : 15
         animateMenuBarIcon = defaults.bool(forKey: "animateMenuBarIcon")
+        mascotSize = min(max(defaults.double(forKey: "mascotSize"), Self.mascotSizeRange.lowerBound), Self.mascotSizeRange.upperBound)
+        sourceDir = defaults.string(forKey: "sourceDir").flatMap { $0.isEmpty ? nil : $0 }
+        autoCheckUpdates = defaults.bool(forKey: "autoCheckUpdates")
     }
 
     /// Standardkonto vorn, jeder Ordner nur einmal.

@@ -22,6 +22,9 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <!-- Commit, aus dem die App gebaut wurde. Daran erkennt „Nach Updates suchen“ neue Stände im Projektordner. -->
+    <key>NotchwerkCommit</key>
+    <string>__COMMIT__</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <!-- notchwerk://usage: ein Klick auf ein Widget klappt die Liste mit der Nutzung auf. -->

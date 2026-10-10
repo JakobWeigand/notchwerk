@@ -21,5 +21,7 @@ sleep 0.5
 rm -rf "$TARGET"
 cp -R "dist/Notchwerk.app" "$TARGET"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
+# Damit „Jetzt aktualisieren“ in der App künftig aus diesem Ordner baut, ohne Terminal.
+defaults write io.github.jakobweigand.claude-notch sourceDir "$(pwd)"
 open "$TARGET"
 echo "✓ Notchwerk läuft. Das Claude-Maskottchen findest du in der Menüleiste."

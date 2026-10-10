@@ -7,10 +7,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.4.0}"
+VERSION="${VERSION:-0.5.0}"
 # Fortlaufend, bei jedem Build größer: Minuten seit 1.1.2026. macOS merkt sich die Widgets je
 # Build-Nummer und übernimmt neue Widgets erst mit einer höheren. Kurz, weil zu lange Nummern stören.
 BUILD="${BUILD:-$(( ($(date +%s) - 1767225600) / 60 ))}"
+# Commit für „Nach Updates suchen“ in der App, mit -dirty bei ungesicherten Änderungen.
+COMMIT="$(git rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$COMMIT" ] && [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then COMMIT="$COMMIT-dirty"; fi
 ARGS=(-c release)
 for arch in ${ARCHS:-}; do ARGS+=(--arch "$arch"); done
 
@@ -62,7 +65,7 @@ APPEX="$APP/Contents/PlugIns/NotchwerkWidgets.appex"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APPEX/Contents/MacOS"
 cp "$BIN_DIR/Notchwerk" "$APP/Contents/MacOS/Notchwerk"
-sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
+sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" -e "s/__COMMIT__/$COMMIT/" Resources/Info.plist > "$APP/Contents/Info.plist"
 cp "$BIN_DIR/NotchwerkWidgets" "$APPEX/Contents/MacOS/NotchwerkWidgets"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Widgets-Info.plist > "$APPEX/Contents/Info.plist"
 

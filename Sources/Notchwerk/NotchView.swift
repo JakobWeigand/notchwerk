@@ -176,7 +176,7 @@ private struct NotchBody: View {
     @ViewBuilder
     private var headerArea: some View {
         if corner {
-            let header = cornerHeader.frame(height: Layout.cornerHeader)
+            let header = cornerHeader.frame(height: bareLogo ? Layout.idleTile(prefs).height : Layout.cornerHeader)
             if geometry.style == .floating {
                 header.gesture(dragGesture)
             } else {
@@ -220,8 +220,8 @@ private struct NotchBody: View {
         HStack(spacing: 10) {
             if idle {
                 Spacer(minLength: 0)
-                Mascot(mood: mascotMood, size: 24, cutOutEyes: true)
-                    .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
+                Mascot(mood: mascotMood, size: CGFloat(prefs.mascotSize), cutOutEyes: true)
+                    .shadow(color: .black.opacity(0.35), radius: 1.5 * CGFloat(prefs.mascotSize) / 24, y: 0.5)
                     .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 Spacer(minLength: 0)
             } else {

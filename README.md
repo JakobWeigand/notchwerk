@@ -18,7 +18,7 @@ Notchwerk ist ein privates Hobbyprojekt von Jakob Weigand. Es ist kostenlos, ver
 
 | Zustand | Am Notch | Auf Bildschirmen ohne Notch |
 |---|---|---|
-| Ruhe | dünner orangener Rand um den Notch | das Claude-Maskottchen oben rechts, ohne Kasten und Rand. Es blinzelt, schaut sich um und winkt ab und zu. Klick öffnet die Liste |
+| Ruhe | dünner orangener Rand um den Notch | das Claude-Maskottchen oben rechts, ohne Kasten und Rand. Es blinzelt, schaut sich um und winkt ab und zu, Größe einstellbar. Klick öffnet die Liste |
 | Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen. Überfahren zeigt die Sitzungen, die gerade arbeiten | Pille mit aktueller Aktion, Klick zeigt die Sitzungen |
 | Claude braucht eine Freigabe | Notch klappt auf, pulsiert und zeigt Befehl mit **Erlauben / Immer erlauben / Ablehnen / Im Terminal** | gleiche Karte oben rechts |
 | Claude hat eine Frage | Frage und Antwortmöglichkeiten | gleich |
@@ -39,6 +39,8 @@ Weitere Punkte
 * Abgebrochene Sitzungen (Esc, Stopp, Fenster zu) verschwinden von selbst: Die App merkt, wenn der Claude Code Prozess weg ist oder im Transkript „[Request interrupted by user]“ steht.
 * Im Menü hinter dem Maskottchen in der Menüleiste stehen die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude. Solange Claude arbeitet, läuft das Maskottchen dort mit; braucht Claude dich, winkt es (abschaltbar).
 * Wenn die App nicht läuft, merkt Claude Code nichts davon und fragt ganz normal im Terminal.
+* **Größe des Maskottchens** oben rechts und beim schwebenden Reiter: in den Einstellungen per Regler (20 bis 80 Punkt) oder im Menü in vier Stufen.
+* **Aktualisieren per Klick**: Menü → **Nach Updates suchen …** oder Einstellungen › Updates. Siehe unten.
 
 ### Mehrere Claude Code Konten
 
@@ -94,7 +96,8 @@ Damit du vor dem Installieren weißt, worauf du dich einlässt. Alles davon läs
 | Ordner für ein weiteres Konto, Startskript | z.B. `~/.claude-arbeit`, `~/.claude-notch/anmelden-arbeit.command` | nur bei **Anlegen und anmelden** | Konto entfernen, Ordner löschen |
 | Daten für die Widgets | `~/.claude-notch/widget/usage.json` (nur Prozentwerte und Zeitpunkte, keine Tokens) | nur wenn die Widgets eingeschaltet sind | Widgets ausschalten |
 | Anmeldeobjekt | Systemeinstellungen → Anmeldeobjekte | erst nach **Verbinden** | Menü → **Beim Anmelden starten** abwählen |
-| Einstellungen | `defaults` unter `io.github.jakobweigand.claude-notch` | beim ersten Ändern | `uninstall.sh` |
+| Einstellungen | `defaults` unter `io.github.jakobweigand.claude-notch` (auch der Projektordner für Updates) | beim ersten Ändern bzw. durch `install.sh` | `uninstall.sh` |
+| Update-Skript und Protokoll | `~/.claude-notch/update.sh`, `~/.claude-notch/update.log` | nur beim Aktualisieren | Ordner löschen |
 
 Dialoge, die macOS zeigen kann, und was sie bedeuten:
 
@@ -102,7 +105,7 @@ Dialoge, die macOS zeigen kann, und was sie bedeuten:
 * **„Notchwerk möchte deine vertraulichen Informationen in ‚Claude Code-credentials‘ verwenden“**: nur wenn du die Nutzungsanzeige oder die Widgets in den Einstellungen eingeschaltet hast (beides Standard aus), einmal je Konto. Siehe Sicherheit.
 * **Gatekeeper-Warnung** beim ersten Start: weil die App nicht bei Apple notarisiert ist. Die Zeile im Schnellstart hebt die Sperre nur für diese eine App auf. Wer das nicht möchte, baut selbst aus dem Quellcode.
 
-Was die App nie tut: ins Netz gehen (außer der optionalen Nutzungsanzeige und den Widgets), Dateien deiner Projekte lesen oder ändern, Freigaben ohne deinen Klick erteilen, im Hintergrund weiterlaufen, wenn du sie beendest. Läuft sie nicht oder stürzt sie ab, merkt Claude Code nur eine Sekunde Verzögerung pro Ereignis und fragt wie gewohnt im Terminal.
+Was die App nie tut: ins Netz gehen (außer der optionalen Nutzungsanzeige, den Widgets und der Suche nach Updates bei GitHub), Dateien deiner Projekte lesen oder ändern, Freigaben ohne deinen Klick erteilen, im Hintergrund weiterlaufen, wenn du sie beendest. Läuft sie nicht oder stürzt sie ab, merkt Claude Code nur eine Sekunde Verzögerung pro Ereignis und fragt wie gewohnt im Terminal.
 
 ## Installation aus dem Quellcode
 
@@ -122,7 +125,9 @@ Beim ersten Start fragt die App, ob sie sich mit Claude Code verbinden soll. Mit
 
 Damit die App nach jedem Neustart läuft, im Menü **Beim Anmelden starten** anhaken.
 
-Aktualisieren geht mit `git pull && ./scripts/install.sh`. Entfernen mit `./scripts/uninstall.sh`.
+Aktualisieren geht danach ohne Terminal: Menü → **Nach Updates suchen …** oder Einstellungen › Updates › **Jetzt aktualisieren**. Die App holt dann mit `git pull` die Änderungen, baut sich in deinem Projektordner neu (wie `install.sh`), ersetzt sich und startet neu. Den Projektordner merkt sich `install.sh`; sonst lässt er sich in den Einstellungen wählen. Wer die fertige App aus den Releases nutzt, bekommt dort die neueste Release-Version, nach Prüfung von Prüfsumme und Signatur. Im Terminal geht es weiterhin mit `git pull && ./scripts/install.sh`. Entfernen mit `./scripts/uninstall.sh`.
+
+Nach einem Update fragt macOS bei eingeschalteter Nutzungsanzeige einmal neu nach dem Schlüsselbund, weil sich die (kostenlose, lokale) Signatur der App mit jedem Bauen ändert.
 
 ## Neue Download-Version
 
@@ -148,7 +153,7 @@ Die App braucht keinen Server und kein Konto. Alles bleibt auf deinem Mac. Ins I
 
 ## Datenschutz
 
-Die App sammelt keine Daten, enthält keine Analyse- oder Tracking-Bausteine und hat keine Verbindung zu einem Server des Entwicklers. Was Claude Code über die Hooks meldet (Projektpfad, aktuelles Werkzeug, Freigabetexte), wird nur im Arbeitsspeicher gehalten und für die Anzeige genutzt, nie gespeichert oder verschickt. Die einzige Netzverbindung ist die optionale Nutzungsanzeige zu `api.anthropic.com` (siehe Sicherheit). Beim Herunterladen über GitHub Releases gelten die Datenschutzbestimmungen von GitHub.
+Die App sammelt keine Daten, enthält keine Analyse- oder Tracking-Bausteine und hat keine Verbindung zu einem Server des Entwicklers. Was Claude Code über die Hooks meldet (Projektpfad, aktuelles Werkzeug, Freigabetexte), wird nur im Arbeitsspeicher gehalten und für die Anzeige genutzt, nie gespeichert oder verschickt. Netzverbindungen gibt es nur zwei: die optionale Nutzungsanzeige zu `api.anthropic.com` (siehe Sicherheit) und die Suche nach Updates bei GitHub. Die läuft nur auf Klick oder, wenn du es einschaltest, einmal am Tag, und schickt nichts außer der Anfrage selbst. Beim Herunterladen über GitHub Releases gelten die Datenschutzbestimmungen von GitHub.
 
 ## Lizenz
 
@@ -202,4 +207,5 @@ Der Code liegt in `Sources/Notchwerk` (die App), `Sources/NotchwerkWidgets` (die
 * `Accounts.swift` mehrere Claude Code Konten (Konfigurationsordner, Schlüsselbund, Anmeldung)
 * `EventServer.swift` lokaler Server mit Token-Prüfung
 * `HookInstaller.swift` Hook-Skript und Eintrag in die `settings.json` jedes Kontos
+* `Updater.swift` Aktualisieren per Klick (Projektordner oder GitHub Releases)
 * `Mascot.swift` das animierte Maskottchen (das Logo selbst steht in `NotchwerkShared/Brand.swift`)

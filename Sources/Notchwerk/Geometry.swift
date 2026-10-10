@@ -1,4 +1,5 @@
 import AppKit
+import NotchwerkShared
 import SwiftUI
 
 /// An welcher Ecke des Fensters die Anzeige hängt und wohin sie aufklappt.
@@ -85,26 +86,24 @@ struct ScreenGeometry: Equatable {
     /// Fensterrahmen für den schwebenden Reiter: Die Kachel sitzt an `center`, der Inhalt klappt
     /// zur Bildschirmmitte hin auf. `center` wird so begrenzt, dass die Kachel sichtbar bleibt.
     @MainActor
-    func floatingPlacement(center: CGPoint, on screen: NSScreen) -> (frame: NSRect, anchor: Anchor, center: CGPoint) {
+    func floatingPlacement(center: CGPoint, tile: CGSize, on screen: NSScreen) -> (frame: NSRect, anchor: Anchor, center: CGPoint) {
         let size = panelSize
-        let tile = Layout.cornerHeader
         let area = screen.visibleFrame
         var c = center
-        c.x = min(max(c.x, area.minX + tile / 2), area.maxX - tile / 2)
-        c.y = min(max(c.y, area.minY + tile / 2), area.maxY - tile / 2)
+        c.x = min(max(c.x, area.minX + tile.width / 2), area.maxX - tile.width / 2)
+        c.y = min(max(c.y, area.minY + tile.height / 2), area.maxY - tile.height / 2)
         let left = c.x > area.midX     // Inhalt nach links aufklappen
         let down = c.y > area.midY     // Inhalt nach unten aufklappen
-        let x = left ? c.x + tile / 2 - size.width : c.x - tile / 2
-        let y = down ? c.y + tile / 2 - size.height : c.y - tile / 2
+        let x = left ? c.x + tile.width / 2 - size.width : c.x - tile.width / 2
+        let y = down ? c.y + tile.height / 2 - size.height : c.y - tile.height / 2
         let anchor: Anchor = down ? (left ? .topTrailing : .topLeading) : (left ? .bottomTrailing : .bottomLeading)
         return (NSRect(x: x, y: y, width: size.width, height: size.height), anchor, c)
     }
 
     @MainActor
-    func defaultFloatingCenter(on screen: NSScreen) -> CGPoint {
+    func defaultFloatingCenter(tile: CGSize, on screen: NSScreen) -> CGPoint {
         let area = screen.visibleFrame
-        let tile = Layout.cornerHeader
-        return CGPoint(x: area.maxX - 10 - tile / 2, y: area.maxY - 8 - tile / 2)
+        return CGPoint(x: area.maxX - 10 - tile.width / 2, y: area.maxY - 8 - tile.height / 2)
     }
 }
 
@@ -133,6 +132,14 @@ enum Layout {
     /// Kopfzeile (und Ruhe-Kachel) auf Bildschirmen ohne Notch und beim schwebenden Reiter.
     static let cornerHeader: CGFloat = 46
     static let listHeader: CGFloat = 22
+    /// Ruhe-Kachel oben rechts und beim schwebenden Reiter: so groß, dass das Maskottchen in der
+    /// eingestellten Größe hineinpasst, mindestens so groß wie die Kopfzeile.
+    static func idleTile(_ prefs: Preferences) -> CGSize {
+        let h = CGFloat(prefs.mascotSize)
+        return CGSize(width: max(cornerHeader, (h * ClaudeLogo.aspect).rounded(.up) + 12),
+                      height: max(cornerHeader, h + 14))
+    }
+
     /// Eine Zeile mit Nutzungsringen (je Konto eine).
     static let usageRowHeight: CGFloat = 43
 
@@ -178,7 +185,7 @@ enum Layout {
         case .hidden:
             return tile ? .zero : n
         case .rim:
-            return tile ? CGSize(width: cornerHeader, height: cornerHeader)
+            return tile ? idleTile(prefs)
                         : CGSize(width: n.width + 8 + ext, height: n.height + 3 + ext)
         case .compact:
             if showsRows(p, model: model, prefs: prefs) {

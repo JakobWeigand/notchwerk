@@ -93,7 +93,7 @@ final class NotchController {
     }
 
     private func layoutKey() -> String {
-        "\(prefs.showOnAllScreens)-\(prefs.placementWithoutNotch.rawValue)-\(prefs.displayMode.rawValue)"
+        "\(prefs.showOnAllScreens)-\(prefs.placementWithoutNotch.rawValue)-\(prefs.displayMode.rawValue)-\(prefs.mascotSize)"
     }
 
     private func rebuildIfLayoutChanged() {
@@ -118,8 +118,10 @@ final class NotchController {
             var frame = geometry.panelFrame(on: screen)
             var center = CGPoint.zero
             if geometry.style == .floating {
-                let placed = geometry.floatingPlacement(center: prefs.floatingPosition ?? geometry.defaultFloatingCenter(on: screen),
-                                                        on: screen)
+                let tile = Layout.idleTile(prefs)
+                let placed = geometry.floatingPlacement(
+                    center: prefs.floatingPosition ?? geometry.defaultFloatingCenter(tile: tile, on: screen),
+                    tile: tile, on: screen)
                 frame = placed.frame
                 state.anchor = placed.anchor
                 center = placed.center
@@ -179,7 +181,7 @@ final class NotchController {
         let offset = entries[index].grabOffset ?? .zero
         let target = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
         let e = entries[index]
-        let placed = e.state.geometry.floatingPlacement(center: target, on: e.screen)
+        let placed = e.state.geometry.floatingPlacement(center: target, tile: Layout.idleTile(prefs), on: e.screen)
         entries[index].floatingCenter = placed.center
         if e.state.anchor != placed.anchor { e.state.anchor = placed.anchor }
         e.panel.setFrame(placed.frame, display: true)

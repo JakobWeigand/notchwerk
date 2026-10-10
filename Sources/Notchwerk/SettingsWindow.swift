@@ -65,6 +65,17 @@ struct SettingsView: View {
                     Toggle("Orangener Rand immer sichtbar", isOn: $prefs.alwaysShowRim)
                 }
                 Toggle("Auf allen Bildschirmen zeigen", isOn: $prefs.showOnAllScreens)
+                if prefs.displayMode == .floating || prefs.placementWithoutNotch == .topRight {
+                    LabeledContent("Größe des Maskottchens") {
+                        HStack(spacing: 8) {
+                            Image(systemName: "a.circle").font(.system(size: 9)).foregroundStyle(.secondary)
+                            Slider(value: $prefs.mascotSize, in: Preferences.mascotSizeRange, step: 4)
+                                .frame(width: 170)
+                            Image(systemName: "a.circle").font(.system(size: 16)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .help("Gilt für das Maskottchen oben rechts und beim schwebenden Reiter.")
+                }
                 Toggle("Maskottchen in der Menüleiste animieren", isOn: $prefs.animateMenuBarIcon)
             }
 
@@ -83,6 +94,8 @@ struct SettingsView: View {
             AccountsSection(prefs: prefs, hookTick: $hookTick, errorText: $errorText)
 
             WidgetsSection(prefs: prefs)
+
+            UpdatesSection(prefs: prefs)
 
             Section("Freigaben und Fragen") {
                 Toggle("Freigaben im Notch beantworten", isOn: $prefs.answerInNotch)
@@ -438,5 +451,108 @@ private struct WidgetsSection: View {
         let dates = prefs.accounts.compactMap { monitor.state(for: $0).snapshot?.fetchedAt }
         guard let latest = dates.max() else { return "Noch keine Daten" }
         return "Stand \(latest.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+// MARK: - Updates
+
+private struct UpdatesSection: View {
+    @ObservedObject var prefs: Preferences
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        Section("Updates") {
+            LabeledContent("Installiert") {
+                Text(installed).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            LabeledContent("Quelle") {
+                switch updater.source {
+                case .project(let dir):
+                    Text(ClaudeAccount.make(name: "", configDir: dir).displayPath)
+                        .foregroundStyle(.secondary)
+                        .help("Aktualisieren holt die Änderungen mit git pull und baut die App neu, wie scripts/install.sh.")
+                case .releases:
+                    Text("GitHub Releases").foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                status
+                Spacer()
+                Button("Nach Updates suchen") { updater.check() }
+                    .disabled(updater.isBusy)
+                Button(updateTitle) { updater.update() }
+                    .disabled(updater.isBusy || !(updater.isAvailable || isProject))
+                    .keyboardShortcut(updater.isAvailable ? .defaultAction : .none)
+            }
+            Toggle("Einmal am Tag automatisch nachsehen", isOn: Binding(
+                get: { prefs.autoCheckUpdates },
+                set: { prefs.autoCheckUpdates = $0; updater.configureTimer() }))
+            HStack {
+                Button(isProject ? "Anderen Projektordner wählen …" : "Projektordner wählen …", action: pickFolder)
+                if isProject {
+                    Button("GitHub Releases nutzen") { prefs.sourceDir = nil }
+                }
+                Spacer()
+            }
+            Text(isProject
+                 ? "Aktualisieren holt neue Änderungen von GitHub, baut die App in deinem Projektordner neu (wie scripts/install.sh), ersetzt sie und startet sie neu. Dafür müssen die Command Line Tools installiert sein."
+                 : "Aktualisieren lädt die neueste Version von GitHub, prüft Prüfsumme und Signatur, ersetzt die App und startet sie neu. Wer aus dem Quellcode installiert hat, wählt den Projektordner, dann wird von dort gebaut.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var isProject: Bool {
+        if case .project = updater.source { return true }
+        return false
+    }
+
+    private var installed: String {
+        if let commit = updater.builtCommit { return "Version \(updater.currentVersion) (\(commit))" }
+        return "Version \(updater.currentVersion)"
+    }
+
+    private var updateTitle: String {
+        if isProject && !updater.isAvailable { return "Neu bauen" }
+        return "Jetzt aktualisieren"
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch updater.phase {
+        case .idle:
+            Text(updater.lastCheck == nil ? "Noch nicht nachgesehen" : "").foregroundStyle(.secondary)
+        case .checking:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Sehe nach …") }
+        case .upToDate(let text):
+            Label(text, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .available(let text):
+            Label(text, systemImage: "arrow.down.circle.fill").foregroundStyle(Theme.orange)
+        case .working(let text):
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text(text) }
+        case .failed(let text):
+            Label(text, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                .lineLimit(3)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func pickFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Ordner mit dem Quellcode von Notchwerk wählen (dort, wo scripts/install.sh liegt)"
+        panel.prompt = "Wählen"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if Updater.isProject(url.path) {
+            prefs.sourceDir = url.path
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Kein Notchwerk-Projektordner"
+            alert.informativeText = "In \(url.path) fehlen .git, Package.swift oder scripts/build-app.sh."
+            alert.runModal()
+        }
     }
 }

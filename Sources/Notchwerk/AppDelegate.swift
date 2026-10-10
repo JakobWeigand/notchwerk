@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
         watchClaudeApp()
         UsageMonitor.shared.start()
+        Updater.shared.start()
 
         if !HookInstaller.isInstalled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -260,6 +261,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item("Verbindung entfernen", #selector(uninstallHooks)))
         }
         menu.addItem(item("Demo abspielen", #selector(playDemo), key: "d"))
+        let updater = Updater.shared
+        switch updater.phase {
+        case .checking:
+            menu.addItem(item("Sehe nach Updates …", #selector(noop), enabled: false))
+        case .working(let text):
+            menu.addItem(item("Update: \(text)", #selector(noop), enabled: false))
+        case .available(let text):
+            menu.addItem(item("Jetzt aktualisieren (\(text))", #selector(runUpdate)))
+        default:
+            menu.addItem(item("Nach Updates suchen …", #selector(checkForUpdates)))
+        }
         menu.addItem(.separator())
 
         menu.addItem(toggle("Orangener Rand immer sichtbar", prefs.alwaysShowRim, #selector(toggleRim)))
@@ -278,6 +290,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         rowsItem.submenu = rowsMenu
         menu.addItem(rowsItem)
+
+        let sizeItem = NSMenuItem(title: "Größe des Maskottchens", action: nil, keyEquivalent: "")
+        let sizeMenu = NSMenu()
+        for choice in Preferences.mascotSizeChoices {
+            let mi = toggle(choice.title, prefs.mascotSize == choice.value, #selector(chooseMascotSize(_:)))
+            mi.representedObject = choice.value
+            sizeMenu.addItem(mi)
+        }
+        sizeItem.submenu = sizeMenu
+        menu.addItem(sizeItem)
 
         let extItem = NSMenuItem(title: "Abstand unter dem Notch", action: nil, keyEquivalent: "")
         let extMenu = NSMenu()
@@ -361,6 +383,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func focusSession(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? String, let session = model.sessions[id] {
             model.focus(session)
+        }
+    }
+
+    @objc private func chooseMascotSize(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? Double { prefs.mascotSize = value }
+    }
+
+    @objc private func runUpdate() { Updater.shared.update() }
+
+    /// Aus dem Menü: nachsehen und das Ergebnis gleich zeigen, bei einem Update mit „Jetzt aktualisieren“.
+    @objc private func checkForUpdates() {
+        Updater.shared.check { [weak self] result in
+            self?.showUpdateResult(result)
+        }
+    }
+
+    private func showUpdateResult(_ result: Updater.Phase) {
+        let alert = NSAlert()
+        switch result {
+        case .available(let text):
+            alert.messageText = "Update für Notchwerk"
+            alert.informativeText = "\(text). Notchwerk wird dafür kurz beendet und startet von selbst neu."
+            alert.addButton(withTitle: "Jetzt aktualisieren")
+            alert.addButton(withTitle: "Später")
+        case .upToDate(let text):
+            alert.messageText = "Notchwerk ist aktuell"
+            alert.informativeText = text
+        case .failed(let text):
+            alert.messageText = "Nachsehen ging nicht"
+            alert.informativeText = text
+        default:
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn, case .available = result {
+            Updater.shared.update()
         }
     }
 
