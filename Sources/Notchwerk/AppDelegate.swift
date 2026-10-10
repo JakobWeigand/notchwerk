@@ -291,6 +291,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rowsItem.submenu = rowsMenu
         menu.addItem(rowsItem)
 
+        let listItem = NSMenuItem(title: "Größe der Liste", action: nil, keyEquivalent: "")
+        let listMenu = NSMenu()
+        for size in Preferences.ListSize.allCases {
+            let mi = toggle(size.title, prefs.listSize == size, #selector(chooseListSize(_:)))
+            mi.representedObject = size.rawValue
+            listMenu.addItem(mi)
+        }
+        listItem.submenu = listMenu
+        menu.addItem(listItem)
+
         let sizeItem = NSMenuItem(title: "Größe des Maskottchens", action: nil, keyEquivalent: "")
         let sizeMenu = NSMenu()
         for choice in Preferences.mascotSizeChoices {
@@ -383,6 +393,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func focusSession(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? String, let session = model.sessions[id] {
             model.focus(session)
+        }
+    }
+
+    @objc private func chooseListSize(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let size = Preferences.ListSize(rawValue: raw) {
+            prefs.listSize = size
         }
     }
 

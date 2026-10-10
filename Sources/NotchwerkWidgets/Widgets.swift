@@ -109,7 +109,7 @@ struct WidgetFrame<Content: View>: View {
 
 // MARK: - Ein Limit
 
-/// Ein Limit (Sitzung, Woche oder Fable 5). Bei einem Konto ein großer Ring, sonst ein Ring je Konto.
+/// Ein Limit (Sitzung, Woche oder Fable 5). Bei einem Konto ein großer Ring, sonst je Konto ein Balken.
 struct SingleLimitView: View {
     let entry: UsageEntry
     let limit: LimitSpec
@@ -117,7 +117,7 @@ struct SingleLimitView: View {
 
     var body: some View {
         WidgetFrame(entry: entry) { feed in
-            let accounts = Array(feed.accounts.prefix(family == .systemSmall ? 2 : 3))
+            let accounts = Array(feed.accounts.prefix(3))
             if accounts.count == 1 {
                 if family == .systemSmall {
                     small(accounts[0], feed: feed)
@@ -196,36 +196,42 @@ struct SingleLimitView: View {
         if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
     }
 
-    /// Mehrere Konten: Ringe nebeneinander, darunter der Name.
+    /// Mehrere Konten untereinander: der Name als Überschrift, rechts die Prozent, darunter ein Balken.
     private func several(_ accounts: [WidgetFeed.Account], feed: WidgetFeed) -> some View {
         let small = family == .systemSmall
-        return VStack(alignment: .leading, spacing: small ? 6 : 8) {
+        let showsReset = accounts.count <= 2
+        return VStack(alignment: .leading, spacing: small ? 8 : 10) {
             WidgetHeader(title: small ? limit.title : limit.longTitle)
-            HStack(alignment: .top, spacing: small ? 8 : 14) {
-                ForEach(accounts) { account in
-                    let window = account.window(limit, at: entry.date)
-                    VStack(spacing: 4) {
-                        UsageRing(percent: window?.percent, lineWidth: small ? 6 : 8, labelSize: small ? 14 : 18)
+            ForEach(accounts) { account in
+                let window = account.window(limit, at: entry.date)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline) {
                         Text(account.name)
-                            .font(.system(size: small ? 9.5 : 11, weight: .semibold))
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Brand.orange)
+                            .widgetAccentable()
                             .lineLimit(1)
-                        if !small {
-                            Group {
-                                if let window {
-                                    ResetText(date: window.resetsAt, now: entry.date)
-                                } else {
-                                    Text(account.problemText ?? limit.missingText)
-                                }
-                            }
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        }
+                        Spacer(minLength: 4)
+                        Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .monospacedDigit()
                     }
-                    .frame(maxWidth: .infinity)
+                    UsageBar(percent: window?.percent, height: small ? 9 : 10)
+                    if window == nil || showsReset {
+                        Group {
+                            if let window {
+                                ResetText(date: window.resetsAt, now: entry.date)
+                            } else {
+                                Text(account.problemText ?? limit.missingText)
+                            }
+                        }
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
                 }
             }
-            .frame(maxHeight: .infinity)
+            Spacer(minLength: 0)
             if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
         }
     }
@@ -233,8 +239,8 @@ struct SingleLimitView: View {
 
 // MARK: - Übersicht
 
-/// Mehrere Limits auf einen Blick. Klein: Balken für das erste Konto. Mittel: Ringe (ein Konto)
-/// oder Balken je Konto. Groß: je Konto ein Abschnitt.
+/// Mehrere Limits auf einen Blick. Ein Konto: Ringe und Balken. Mehrere Konten: je Konto ein
+/// Abschnitt mit dem Namen als Überschrift und darunter die Balken.
 struct OverviewView: View {
     let entry: UsageEntry
     let limits: [LimitSpec]
@@ -250,7 +256,24 @@ struct OverviewView: View {
         }
     }
 
+    @ViewBuilder
     private func small(_ feed: WidgetFeed) -> some View {
+        if feed.accounts.count > 1 {
+            // Je Konto ein Abschnitt, untereinander.
+            VStack(alignment: .leading, spacing: limits.count > 2 ? 6 : 12) {
+                ForEach(feed.accounts.prefix(2)) { account in
+                    AccountSection(account: account, limits: limits, date: entry.date,
+                                   style: limits.count > 2 ? .compact : .comfortable)
+                }
+                Spacer(minLength: 0)
+                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+            }
+        } else {
+            smallSingle(feed)
+        }
+    }
+
+    private func smallSingle(_ feed: WidgetFeed) -> some View {
         let account = feed.accounts[0]
         return VStack(alignment: .leading, spacing: limits.count > 2 ? 6 : 9) {
             WidgetHeader(title: feed.accounts.count > 1 ? account.name : "Claude")
@@ -288,11 +311,23 @@ struct OverviewView: View {
                 .frame(maxHeight: .infinity)
                 if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
             }
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                WidgetHeader(title: "Claude Nutzung")
+        } else if limits.count <= 2 {
+            // Untereinander: „Privat“ mit seinen Balken, darunter „Arbeit“.
+            VStack(alignment: .leading, spacing: 9) {
                 ForEach(feed.accounts.prefix(2)) { account in
-                    accountBars(account, nameWidth: 62)
+                    AccountSection(account: account, limits: limits, date: entry.date, style: .wide)
+                }
+                Spacer(minLength: 0)
+                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+            }
+        } else {
+            // Mit Fable sind es drei Balken je Konto: dann nebeneinander, sonst reicht die Höhe nicht.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(feed.accounts.prefix(2)) { account in
+                        AccountSection(account: account, limits: limits, date: entry.date, style: .comfortable)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 Spacer(minLength: 0)
                 if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
@@ -322,27 +357,10 @@ struct OverviewView: View {
                 if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
             }
         } else {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 WidgetHeader(title: "Claude Nutzung")
-                ForEach(feed.accounts.prefix(3)) { account in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(account.name)
-                                .font(.system(size: 12, weight: .bold))
-                                .lineLimit(1)
-                            Spacer(minLength: 4)
-                            if let problem = account.problemText {
-                                Text(problem)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                        ForEach(limits, id: \.self) { limit in
-                            UsageBarRow(title: limit.title, window: account.window(limit, at: entry.date),
-                                        date: entry.date, showsReset: true)
-                        }
-                    }
+                ForEach(feed.accounts.prefix(limits.count > 2 ? 2 : 3)) { account in
+                    AccountSection(account: account, limits: limits, date: entry.date, style: .roomy)
                 }
                 Spacer(minLength: 0)
                 if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
@@ -370,25 +388,6 @@ struct OverviewView: View {
             .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    /// Ein Konto als Zeile: Name links, daneben je Limit ein kleiner Balken.
-    private func accountBars(_ account: WidgetFeed.Account, nameWidth: CGFloat) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            Text(account.name)
-                .font(.system(size: 11, weight: .bold))
-                .lineLimit(1)
-                .frame(width: nameWidth, alignment: .leading)
-            if let problem = account.problemText, account.windows.isEmpty {
-                ProblemNote(text: problem)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ForEach(limits, id: \.self) { limit in
-                    UsageBarRow(title: limit.title, window: account.window(limit, at: entry.date),
-                                date: entry.date, titleSize: 10)
-                }
-            }
-        }
     }
 }
 

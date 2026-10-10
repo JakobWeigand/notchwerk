@@ -280,3 +280,103 @@ struct EmptyFeedView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+// MARK: - Ein Konto mit Balken
+
+/// Ein Konto als Abschnitt: der Name als Überschrift, darunter je Limit eine Zeile mit Balken.
+/// So stehen mehrere Konten untereinander, z.B. „Privat“ und darunter „Arbeit“.
+struct AccountSection: View {
+    let account: WidgetFeed.Account
+    let limits: [LimitSpec]
+    let date: Date
+    var style: LimitLine.Style = .compact
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: style == .compact ? 3 : 5) {
+            HStack(spacing: 6) {
+                Text(account.name)
+                    .font(.system(size: style == .compact ? 12 : 13.5, weight: .bold))
+                    .foregroundStyle(Brand.orange)
+                    .widgetAccentable()
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                // Zahlen vom letzten Abruf, gerade klappt es nicht: nur ein kleines Zeichen.
+                if account.problemText != nil, !account.windows.isEmpty {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let problem = account.problemText, account.windows.isEmpty {
+                ProblemNote(text: problem)
+            } else {
+                ForEach(limits, id: \.self) { limit in
+                    LimitLine(limit: limit, window: account.window(limit, at: date), date: date, style: style)
+                }
+            }
+        }
+    }
+}
+
+/// Eine Zeile: Name des Limits, Balken, Prozent. Je nach Platz mit „neu in …“ daneben oder darunter.
+struct LimitLine: View {
+    enum Style {
+        /// Klein: alles in einer Zeile.
+        case compact
+        /// Wie compact, nur größer, wo der Platz reicht.
+        case comfortable
+        /// Mittel: in einer Zeile, rechts wann es neu losgeht.
+        case wide
+        /// Groß: dickerer Balken, darunter wann es neu losgeht.
+        case roomy
+    }
+
+    let limit: LimitSpec
+    let window: WidgetFeed.Window?
+    let date: Date
+    var style: Style = .compact
+
+    var body: some View {
+        let roomy = style == .roomy
+        let big = style != .compact
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(limit.title)
+                    .font(.system(size: big ? 11.5 : 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: roomy ? 52 : (big ? 46 : 42), alignment: .leading)
+                UsageBar(percent: window?.percent, height: big ? 8.5 : 7)
+                Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
+                    .font(.system(size: big ? 13 : 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .frame(width: big ? 38 : 32, alignment: .trailing)
+                if style == .wide {
+                    reset
+                        .frame(width: 92, alignment: .trailing)
+                }
+            }
+            if roomy {
+                reset
+                    .padding(.leading, 58)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var reset: some View {
+        Group {
+            if let window {
+                ResetText(date: window.resetsAt, now: date)
+            } else {
+                Text(limit.missingText)
+            }
+        }
+        .font(.system(size: 9.5))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+    }
+}

@@ -79,14 +79,24 @@ private struct NotchBody: View {
     }
     /// Zusätzlicher Abstand unter dem Notch, damit der Rand nicht am Notch klebt.
     private var ext: CGFloat { corner ? 0 : CGFloat(prefs.notchExtension) }
-    /// Ruhezustand oben rechts oder als Reiter: nur das Claude-Maskottchen, ohne Kasten und Rand.
-    private var bareLogo: Bool { corner && (presentation == .rim || presentation == .hidden) }
+    /// Oben rechts oder als Reiter, solange nichts aufgeklappt ist: nur das Claude-Maskottchen,
+    /// ohne Kasten und Rand. Arbeitet Claude, geht es gemächlich auf der Stelle.
+    private var bareLogo: Bool {
+        corner && (presentation == .rim || presentation == .hidden || (presentation == .compact && !showsRows))
+    }
+    /// Die Liste oben rechts und am Reiter kommt ohne Kopfzeile aus: „Claude“ steht in ihr selbst.
+    private var headerless: Bool { corner && presentation == .sessions }
 
     var body: some View {
         ZStack(alignment: anchor.flipped ? .bottom : .top) {
             background
-            content
-                .clipShape(clipShape)
+            if bareLogo {
+                // Nicht zuschneiden, sonst stößt das Maskottchen beim Hüpfen oben an.
+                content
+            } else {
+                content
+                    .clipShape(clipShape)
+            }
         }
         .contentShape(fillShape)
         .onTapGesture(perform: onTap)
@@ -146,7 +156,7 @@ private struct NotchBody: View {
         VStack(spacing: 0) {
             if anchor.flipped {
                 Spacer(minLength: 0)
-            } else {
+            } else if !headerless {
                 headerArea
             }
             if showsRows {
@@ -158,13 +168,13 @@ private struct NotchBody: View {
             } else if expanded {
                 expandedContent
                     .padding(.horizontal, side)
-                    .padding(.top, 6)
+                    .padding(.top, headerless ? 10 : 6)
                     .padding(.bottom, 12)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.92, anchor: .top)).animation(Theme.spring.delay(0.06)),
                         removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
-            if anchor.flipped {
+            if anchor.flipped && !headerless {
                 headerArea
             } else {
                 Spacer(minLength: 0)
@@ -220,9 +230,14 @@ private struct NotchBody: View {
         HStack(spacing: 10) {
             if idle {
                 Spacer(minLength: 0)
-                Mascot(mood: mascotMood, size: CGFloat(prefs.mascotSize), cutOutEyes: true)
-                    .shadow(color: .black.opacity(0.35), radius: 1.5 * CGFloat(prefs.mascotSize) / 24, y: 0.5)
-                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                // Unten ausgerichtet: Die Luft darüber ist zum Hüpfen da.
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Mascot(mood: mascotMood, size: CGFloat(prefs.mascotSize), cutOutEyes: true)
+                        .shadow(color: .black.opacity(0.35), radius: 1.5 * CGFloat(prefs.mascotSize) / 24, y: 0.5)
+                }
+                .padding(.bottom, 7)
+                .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 Spacer(minLength: 0)
             } else {
                 SparkSpinner(active: model.isWorking || attention, size: 16,
@@ -252,7 +267,7 @@ private struct NotchBody: View {
     }
 
     private var mascotMood: Mascot.Mood {
-        if attention { return .attention }
+        if attention || model.needsAttention { return .attention }
         if case .banner = presentation, model.banner?.style != .info { return .happy }
         if model.isWorking { return .working }
         return .idle
@@ -275,8 +290,13 @@ private struct NotchBody: View {
                     .onTapGesture { model.clearBanner() }
             }
         case .sessions:
-            SessionListView(model: model, rows: prefs.compactRows, pinned: pinned,
-                            showUsage: prefs.showUsage, maxGauges: corner ? 2 : 3, onClose: onTap)
+            // Ohne Kopfzeile zieht man den Reiter an der Zeile mit „Claude“.
+            SessionListView(model: model, rows: prefs.listSize.rows, pinned: pinned,
+                            showUsage: prefs.showUsage,
+                            maxGauges: Layout.maxGauges(prefs: prefs, geometry: geometry),
+                            showsMascot: headerless,
+                            onDrag: headerless && geometry.style == .floating ? (onDragMoved, onDragEnded) : nil,
+                            onClose: onTap)
         default:
             EmptyView()
         }
@@ -346,13 +366,21 @@ private struct SessionListView: View {
     let pinned: Bool
     let showUsage: Bool
     let maxGauges: Int
+    /// Oben rechts und am Reiter: rechts das kleine Maskottchen, dort wo es vorher saß.
+    var showsMascot = false
+    /// Reiter an der Zeile mit „Claude“ verschieben.
+    var onDrag: (moved: () -> Void, ended: () -> Void)?
     let onClose: () -> Void
 
     var body: some View {
         let active = model.activeSessions
         let visible = Layout.listRows(active: active.count, max: rows)
         VStack(alignment: .leading, spacing: 0) {
+            // Links „Claude“, daneben die Einstellungen und der Stand.
             HStack(spacing: 8) {
+                Text("Claude")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.orange)
                 Button {
                     SettingsWindowController.shared.show()
                 } label: {
@@ -365,15 +393,19 @@ private struct SessionListView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Einstellungen")
-                Text("Claude")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.orange)
-                Spacer()
                 Text(active.isEmpty
                      ? (model.claudeAppRunning ? "App geöffnet" : "Bereit")
                      : "\(active.count) aktive Sitzung\(active.count == 1 ? "" : "en")")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.06)))
+                Spacer(minLength: 4)
+                if showsMascot {
+                    Mascot(mood: model.isWorking ? .working : .idle, size: 13)
+                }
                 if pinned {
                     Button(action: onClose) {
                         Image(systemName: "xmark")
@@ -387,6 +419,11 @@ private struct SessionListView: View {
                 }
             }
             .frame(height: Layout.listHeader)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                .onChanged { _ in onDrag?.moved() }
+                .onEnded { _ in onDrag?.ended() },
+                     including: onDrag == nil ? .subviews : .all)
             Spacer().frame(height: 4)
             if active.isEmpty {
                 Text("Keine aktive Claude Code Sitzung. Sobald Claude arbeitet oder dich braucht, erscheint es hier.")

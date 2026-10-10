@@ -61,12 +61,15 @@ struct Mascot: View {
             }
             return (pose, 0)
         case .working:
-            // Auf der Stelle laufen: Beine paarweise, Arme gegengleich, bei jedem Schritt ein kleiner Wipper.
-            let step = Int(t / 0.16) % 2
+            // Gemächlich auf der Stelle gehen: Beine paarweise, Arme gegengleich, dazu ein sanftes
+            // Wippen. Ruhig genug, um nicht abzulenken, aber man sieht, dass Claude noch arbeitet.
+            let stride = 0.45
+            let step = Int(t / stride) % 2
+            let phase = t.truncatingRemainder(dividingBy: stride) / stride
             var pose = ClaudeLogo.Pose(leftArm: step == 0 ? 0.5 : 0, rightArm: step == 0 ? 0 : 0.5,
                                        liftedLegs: step == 0 ? [0, 2] : [1, 3])
-            if t.truncatingRemainder(dividingBy: 3.9) < 0.12 { pose.eyes = .closed }
-            return (pose, step == 0 ? 0 : 0.25)
+            if t.truncatingRemainder(dividingBy: 5.3) < 0.13 { pose.eyes = .closed }
+            return (pose, CGFloat(sin(phase * .pi)) * 0.2)
         case .attention:
             // Hüpfen und abwechselnd mit den Armen winken.
             let k = Int(t / 0.18) % 2

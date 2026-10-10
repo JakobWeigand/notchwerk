@@ -40,9 +40,9 @@ struct ScreenGeometry: Equatable {
     /// Fenstergröße. Das Fenster ist durchsichtig und klickt durch, solange die Maus nicht auf der Anzeige ist.
     var panelSize: CGSize {
         switch style {
-        case .floating: return CGSize(width: 460, height: 360)
-        case .corner: return CGSize(width: 460, height: 380)
-        default: return CGSize(width: 680, height: 380)
+        // Großzügig, damit auch die größte Liste hineinpasst. Außerhalb der Anzeige klickt das Fenster durch.
+        case .floating, .corner: return CGSize(width: 680, height: 600)
+        default: return CGSize(width: 780, height: 600)
         }
     }
 
@@ -134,10 +134,21 @@ enum Layout {
     static let listHeader: CGFloat = 22
     /// Ruhe-Kachel oben rechts und beim schwebenden Reiter: so groß, dass das Maskottchen in der
     /// eingestellten Größe hineinpasst, mindestens so groß wie die Kopfzeile.
+    /// Oben bleibt etwas Luft, damit das Maskottchen hüpfen kann.
     static func idleTile(_ prefs: Preferences) -> CGSize {
         let h = CGFloat(prefs.mascotSize)
         return CGSize(width: max(cornerHeader, (h * ClaudeLogo.aspect).rounded(.up) + 12),
-                      height: max(cornerHeader, h + 14))
+                      height: max(cornerHeader, (h * 1.15).rounded(.up) + 14))
+    }
+
+    /// Breite der aufgeklappten Liste.
+    static func expandedWidth(prefs: Preferences, geometry g: ScreenGeometry) -> CGFloat {
+        g.isTile ? prefs.listSize.width : max(g.notchSize.width + 2 * wing, prefs.listSize.width + 50)
+    }
+
+    /// Wie viele Nutzungsringe nebeneinander passen.
+    static func maxGauges(prefs: Preferences, geometry g: ScreenGeometry) -> Int {
+        max(2, Int((expandedWidth(prefs: prefs, geometry: g) - 40) / 140))
     }
 
     /// Eine Zeile mit Nutzungsringen (je Konto eine).
@@ -159,9 +170,7 @@ enum Layout {
         if let req = model.currentRequest { return .request(req.id) }
         if let banner = model.banner { return .banner(banner.id) }
         if pinned { return .sessions }
-        // Oben rechts (fest, ohne Notch) öffnet nur ein Klick die Liste. Am Notch und beim
-        // schwebenden Reiter reicht das Überfahren.
-        if hovering && prefs.expandOnHover && g.style != .corner { return .sessions }
+        if hovering && prefs.expandOnHover { return .sessions }
         if !model.activeSessions.isEmpty { return .compact }
         if prefs.alwaysShowRim || model.claudeAppRunning || !model.sessions.isEmpty { return .rim }
         return .hidden
@@ -176,7 +185,7 @@ enum Layout {
         let n = g.notchSize
         let tile = g.isTile
         let ext: CGFloat = tile ? 0 : CGFloat(prefs.notchExtension)
-        let expandedWidth: CGFloat = tile ? 430 : max(n.width + 2 * wing, 480)
+        let expandedWidth = Layout.expandedWidth(prefs: prefs, geometry: g)
         let top: CGFloat = tile ? cornerHeader : n.height + ext
         let rows = prefs.compactRows
         let active = model.activeSessions.count
@@ -193,15 +202,18 @@ enum Layout {
                 let footer: CGFloat = active > rows ? 16 : 0
                 return CGSize(width: expandedWidth, height: top + 4 + shown * rowHeight + footer + 10)
             }
-            return tile ? CGSize(width: 250, height: cornerHeader)
+            // Oben rechts und als Reiter: nur das Maskottchen, das in Ruhe weiterarbeitet.
+            return tile ? idleTile(prefs)
                         : CGSize(width: n.width + 2 * wing, height: n.height + ext)
         case .banner:
             return CGSize(width: expandedWidth, height: top + 74)
         case .sessions:
-            let body: CGFloat = active == 0 ? 40 : listRows(active: active, max: rows) * rowHeight
+            let body: CGFloat = active == 0 ? 40 : listRows(active: active, max: prefs.listSize.rows) * rowHeight
             let footer: CGFloat = model.idleCount > 0 ? 16 : 0
             let usage: CGFloat = prefs.showUsage ? usageBlockHeight(prefs) : 0
-            return CGSize(width: expandedWidth, height: top + 6 + listHeader + 4 + body + footer + usage + 12)
+            // Oben rechts und als Reiter hat die Liste keine eigene Kopfzeile, sie beginnt gleich mit „Claude“.
+            let head: CGFloat = tile ? 10 : top + 6
+            return CGSize(width: expandedWidth, height: head + listHeader + 4 + body + footer + usage + 12)
         case .request:
             return CGSize(width: expandedWidth, height: top + requestHeight(model.currentRequest))
         }

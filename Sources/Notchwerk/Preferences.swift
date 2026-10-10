@@ -28,6 +28,38 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// Wie groß die aufgeklappte Liste ist: Breite und wie viele Sitzungen ohne Scrollen hineinpassen.
+    enum ListSize: String, CaseIterable {
+        case small, normal, large, extraLarge
+
+        var title: String {
+            switch self {
+            case .small: return "Klein"
+            case .normal: return "Normal"
+            case .large: return "Groß"
+            case .extraLarge: return "Sehr groß"
+            }
+        }
+
+        var width: CGFloat {
+            switch self {
+            case .small: return 380
+            case .normal: return 430
+            case .large: return 520
+            case .extraLarge: return 620
+            }
+        }
+
+        var rows: Int {
+            switch self {
+            case .small: return 2
+            case .normal: return 3
+            case .large: return 5
+            case .extraLarge: return 7
+            }
+        }
+    }
+
     /// Auswahl für den Abstand unter dem Notch. 1 mm sind auf einem MacBook-Display etwa 5 Punkte.
     static let extensionChoices: [(title: String, value: Double)] = [
         ("Keiner", 0),
@@ -86,6 +118,8 @@ final class Preferences: ObservableObject {
     @Published var widgetRefreshMinutes: Int { didSet { defaults.set(widgetRefreshMinutes, forKey: "widgetRefreshMinutes") } }
     /// Das Maskottchen in der Menüleiste läuft mit, solange Claude arbeitet, und winkt, wenn Claude dich braucht.
     @Published var animateMenuBarIcon: Bool { didSet { defaults.set(animateMenuBarIcon, forKey: "animateMenuBarIcon") } }
+    /// Größe der aufgeklappten Liste.
+    @Published var listSize: ListSize { didSet { defaults.set(listSize.rawValue, forKey: "listSize") } }
     /// Höhe des Maskottchens oben rechts und beim schwebenden Reiter, in Punkten.
     @Published var mascotSize: Double { didSet { defaults.set(mascotSize, forKey: "mascotSize") } }
     /// Projektordner (git-Checkout), aus dem die App gebaut wurde. Dann aktualisiert sie sich daraus
@@ -127,6 +161,7 @@ final class Preferences: ObservableObject {
             "widgetRefreshMinutes": 15,
             "animateMenuBarIcon": true,
             "mascotSize": 24.0,
+            "listSize": ListSize.normal.rawValue,
             "autoCheckUpdates": false,
         ])
         enabled = defaults.bool(forKey: "enabled")
@@ -153,6 +188,7 @@ final class Preferences: ObservableObject {
         widgetRefreshMinutes = Self.widgetRefreshChoices.contains(minutes) ? minutes : 15
         animateMenuBarIcon = defaults.bool(forKey: "animateMenuBarIcon")
         mascotSize = min(max(defaults.double(forKey: "mascotSize"), Self.mascotSizeRange.lowerBound), Self.mascotSizeRange.upperBound)
+        listSize = ListSize(rawValue: defaults.string(forKey: "listSize") ?? "") ?? .normal
         sourceDir = defaults.string(forKey: "sourceDir").flatMap { $0.isEmpty ? nil : $0 }
         autoCheckUpdates = defaults.bool(forKey: "autoCheckUpdates")
     }

@@ -82,8 +82,15 @@ struct SettingsView: View {
             Section("Sitzungen") {
                 Toggle("Beim Überfahren aufklappen", isOn: $prefs.expandOnHover)
                 Toggle("Arbeitende Sitzungen dauerhaft unter dem Notch zeigen", isOn: $prefs.showSessionsInNotch)
-                Picker("Zeilen in der Liste", selection: $prefs.compactRows) {
-                    ForEach(1...3, id: \.self) { Text("\($0)").tag($0) }
+                Picker("Größe der aufgeklappten Liste", selection: $prefs.listSize) {
+                    ForEach(Preferences.ListSize.allCases, id: \.self) { size in
+                        Text("\(size.title) (\(size.rows) Sitzungen)").tag(size)
+                    }
+                }
+                if prefs.showSessionsInNotch {
+                    Picker("Zeilen unter dem Notch", selection: $prefs.compactRows) {
+                        ForEach(1...3, id: \.self) { Text("\($0)").tag($0) }
+                    }
                 }
                 Toggle("Nutzung (Sitzungs- und Wochenlimit) zeigen", isOn: $prefs.showUsage)
                 Text("Für die Nutzung liest die App den Claude Code Login aus dem Schlüsselbund und fragt nur die Limits bei api.anthropic.com ab, so wie /usage in Claude Code. Das kostet nichts und zählt nicht gegen die Limits. Hinweis: Anthropic sieht den Login-Token laut Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, deshalb ist sie standardmäßig aus und auf eigene Verantwortung.")

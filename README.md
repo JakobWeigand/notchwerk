@@ -19,7 +19,7 @@ Notchwerk ist ein privates Hobbyprojekt von Jakob Weigand. Es ist kostenlos, ver
 | Zustand | Am Notch | Auf Bildschirmen ohne Notch |
 |---|---|---|
 | Ruhe | dünner orangener Rand um den Notch | das Claude-Maskottchen oben rechts, ohne Kasten und Rand. Es blinzelt, schaut sich um und winkt ab und zu, Größe einstellbar. Klick öffnet die Liste |
-| Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen. Überfahren zeigt die Sitzungen, die gerade arbeiten | Pille mit aktueller Aktion, Klick zeigt die Sitzungen |
+| Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen. Überfahren zeigt die Sitzungen, die gerade arbeiten | nur das Maskottchen, das gemächlich auf der Stelle geht. Überfahren zeigt die Sitzungen |
 | Claude braucht eine Freigabe | Notch klappt auf, pulsiert und zeigt Befehl mit **Erlauben / Immer erlauben / Ablehnen / Im Terminal** | gleiche Karte oben rechts |
 | Claude hat eine Frage | Frage und Antwortmöglichkeiten | gleich |
 | Claude ist fertig | kurze Einblendung „Fertig“ mit Ton, die Zeile verschwindet kurz danach | gleich |
@@ -31,10 +31,10 @@ Weitere Punkte
 * Erkennt automatisch ob ein Notch da ist. Bei zugeklapptem MacBook an Monitor, Maus und Tastatur erscheint die Anzeige oben rechts (oder oben mittig, umstellbar im Menü).
 * Es wird nur gezeigt, was gerade passiert: Sitzungen, die arbeiten oder dich brauchen. Fertige Sitzungen verschwinden wieder. „Wartet“ steht nur da, wenn Claude wirklich eine Freigabe oder Antwort braucht.
 * Jede Zeile zeigt, woher die Sitzung kommt: **Terminal**, **VS Code**, **Claude App** (dort mit dem Chat-Titel). Ein Klick auf die Zeile holt genau dieses Fenster nach vorn: den Tab im Terminal, das Projektfenster in VS Code oder den Chat in der Claude App.
-* Die Liste erscheint beim Überfahren des Notch (oben rechts per Klick auf das Maskottchen) und verschwindet, sobald die Maus wieder weg ist. Bis zu zwei Zeilen sind sofort zu sehen, bei mehr lässt sich scrollen. Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
+* Die Liste erscheint beim Überfahren des Notch oder des Maskottchens und verschwindet, sobald die Maus wieder weg ist. Wie groß sie ist (Breite und wie viele Sitzungen ohne Scrollen hineinpassen), lässt sich in den Einstellungen und im Menü unter **Größe der Liste** wählen. Oben in der Liste stehen „Claude“, daneben die Einstellungen und der Stand (z.B. „App geöffnet“). Wer die Zeilen dauerhaft unter dem Notch sehen will, schaltet im Menü **Arbeitende Sitzungen unter dem Notch zeigen** ein.
 * Unten in der aufgeklappten Liste steht die Nutzung wie bei `/usage`: Ringe für das Sitzungslimit (5 Stunden) und das Wochenlimit, mit dem Anteil, der noch frei ist, und wann sich das Limit zurücksetzt. Bei mehreren Konten eine Zeile je Konto.
 * Der Abstand des orangenen Rands unter dem Notch ist einstellbar (Standard 1 mm), damit der echte Notch nicht hervorschaut.
-* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad oben links in der aufgeklappten Liste oder über das Maskottchen in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Notchwerk eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
+* **Einstellungen** gibt es als eigenes Fenster: über das Zahnrad neben „Claude“ in der aufgeklappten Liste oder über das Maskottchen in der Menüleiste. Dort lässt sich alles ein- und ausschalten, auch die ganze Anzeige auf einmal („Notchwerk eingeschaltet“). Pausiert fragt Claude Code wie gewohnt im Terminal.
 * **Schwebender Reiter** statt Notch: In den Einstellungen unter „Anzeigeart“ wählbar. Das kleine Maskottchen lässt sich mit der Maus an eine beliebige Stelle ziehen, bleibt im Vordergrund, wandert auf jeden Schreibtisch mit und öffnet die Liste beim Überfahren. Praktisch, wenn der Notch beim Surfen zu leicht ausgelöst wird.
 * Abgebrochene Sitzungen (Esc, Stopp, Fenster zu) verschwinden von selbst: Die App merkt, wenn der Claude Code Prozess weg ist oder im Transkript „[Request interrupted by user]“ steht.
 * Im Menü hinter dem Maskottchen in der Menüleiste stehen die aktiven Sitzungen zum Anklicken, und **Demo abspielen** zeigt alle Animationen ohne Claude. Solange Claude arbeitet, läuft das Maskottchen dort mit; braucht Claude dich, winkt es (abschaltbar).
@@ -61,10 +61,10 @@ Ab macOS 14 bringt die App Widgets für den Schreibtisch und die Mitteilungszent
 
 | Widget | Größen | Zeigt |
 |---|---|---|
-| Sitzungslimit | klein, mittel | 5-Stunden-Limit mit Ring und Zeit bis zum Zurücksetzen |
+| Sitzungslimit | klein, mittel | 5-Stunden-Limit mit Ring und Zeit bis zum Zurücksetzen, bei mehreren Konten je Konto ein Balken |
 | Wochenlimit | klein, mittel | Wochenlimit über alle Modelle |
 | Fable-5-Limit | klein, mittel | eigenes Wochenlimit für Fable 5 |
-| Übersicht | klein, mittel, groß | Sitzungs- und Wochenlimit zusammen |
+| Übersicht | klein, mittel, groß | Sitzungs- und Wochenlimit zusammen. Bei mehreren Konten je Konto eine Überschrift (z.B. „Privat“, darunter „Arbeit“) mit je einem Balken für Sitzung und Woche |
 | Übersicht mit Fable 5 | klein, mittel, groß | Sitzung, Woche und Fable 5 zusammen |
 | Alle Konten | mittel, groß | alle Konten nebeneinander |
 
