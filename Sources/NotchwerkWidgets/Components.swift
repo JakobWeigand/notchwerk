@@ -443,17 +443,18 @@ struct LimitLine: View {
 // MARK: - Ringe wie im Batterie-Widget
 
 extension LimitSpec {
-    /// Symbol in der Mitte des Rings: Sanduhr für die 5 Stunden, Kalender für die Woche.
+    /// Symbol in der Mitte des Rings: Uhr für die 5 Stunden, Kalender für die Woche.
     var symbol: String {
         switch self {
-        case .session: return "hourglass"
+        case .session: return "clock"
         case .week: return "calendar"
         case .fable: return "sparkles"
         }
     }
 }
 
-/// Ein Limit als Ring im Stil des Batterie-Widgets von Apple: in der Mitte das Symbol und die Prozent.
+/// Ein Limit als Ring im Stil des Batterie-Widgets von Apple: Wie viel genutzt ist, zeigt der Ring,
+/// in der Mitte steht nur das Symbol.
 struct LimitRing: View {
     let limit: LimitSpec
     let window: WidgetFeed.Window?
@@ -471,19 +472,14 @@ struct LimitRing: View {
                     .rotationEffect(.degrees(-90))
                     .widgetAccentable()
             }
-            VStack(spacing: 0) {
-                Image(systemName: limit.symbol)
-                    .font(.system(size: diameter * 0.2, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(window.map { "\(Int($0.percent.rounded()))%" } ?? "–")
-                    .font(.system(size: diameter * 0.25, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .padding(line + 1)
+            Image(systemName: limit.symbol)
+                .font(.system(size: diameter * 0.36, weight: .medium))
+                .foregroundStyle(window == nil ? .secondary : .primary)
         }
         .frame(width: diameter, height: diameter)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(limit.longTitle)
+        .accessibilityValue(window.map { "\(Int($0.percent.rounded())) Prozent genutzt" } ?? "keine Daten")
         .help(limit.longTitle)
     }
 }
