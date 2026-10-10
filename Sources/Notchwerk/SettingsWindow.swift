@@ -684,7 +684,7 @@ private struct AdvancedSection: View {
                         ],
                         safeguards: [
                             "Das Eingabefeld bekommt nie von selbst den Fokus. Erst ein Klick hinein nimmt Tastatureingaben an.",
-                            "„Fertig“ gibt Claude Code sofort frei, nach Ablauf der Wartezeit geht es von selbst weiter.",
+                            "„Schließen“ gibt Claude Code sofort frei, nach Ablauf der Wartezeit geht es von selbst weiter.",
                             "Der Text geht nur als Anweisung an Claude Code, nie an eine Shell, und nur über den lokalen Server mit Token.",
                         ])
                     if prefs.replyInNotch {

@@ -185,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateMenuBarIcon() {
         var mood = Mascot.Mood.idle
         if prefs.enabled && prefs.animateMenuBarIcon {
-            if model.needsAttention || model.currentRequest != nil {
+            if model.needsAttention || model.currentRequest?.needsYou == true {
                 mood = .attention
             } else if model.isWorking {
                 mood = .working

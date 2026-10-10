@@ -74,8 +74,8 @@ private struct NotchBody: View {
     private var showsRows: Bool { Layout.showsRows(presentation, model: model, prefs: prefs) }
     private var open: Bool { expanded || showsRows }
     private var attention: Bool {
-        if case .request = presentation { return true }
-        return false
+        guard case .request = presentation, let req = model.currentRequest else { return false }
+        return req.needsYou
     }
     /// Zusätzlicher Abstand unter dem Notch, damit der Rand nicht am Notch klebt.
     private var ext: CGFloat { corner ? 0 : CGFloat(prefs.notchExtension) }
@@ -283,7 +283,15 @@ private struct NotchBody: View {
     }
 
     private var headline: String {
-        if model.currentRequest != nil { return "Claude braucht dich" }
+        if let req = model.currentRequest {
+            switch req.kind {
+            case .reply: return "Fertig · \(req.project)"
+            case .limit: return "Limit erreicht · \(req.project)"
+            case .compose: return "Nachricht für später"
+            case .question: return "Claude hat eine Frage"
+            default: return "Claude braucht dich"
+            }
+        }
         if let b = model.banner { return b.title }
         if case .sessions = presentation { return "Claude" }
         let active = model.activeSessions
@@ -294,6 +302,7 @@ private struct NotchBody: View {
 
     private var mascotMood: Mascot.Mood {
         if attention || model.needsAttention { return .attention }
+        if case .reply = model.currentRequest?.kind { return .happy }
         if case .banner = presentation, model.banner?.style != .info { return .happy }
         if model.isWorking { return .working }
         return .idle
@@ -838,7 +847,7 @@ private struct RequestView: View {
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                MessageComposer(prompt: "Antwort an Claude …", sendTitle: "Antworten", cancelTitle: "Fertig",
+                MessageComposer(prompt: "Optional: weitere Anweisung an Claude …", sendTitle: "Senden", cancelTitle: "Schließen",
                                 deadline: deadline,
                                 send: { answer(.message($0)) },
                                 cancel: { answer(.terminal) })
@@ -861,6 +870,12 @@ private struct RequestView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            if case .reply = request.kind {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.allow)
+                    .accessibilityHidden(true)
+            }
             Text(title)
                 .font(.system(size: 13.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.cream)
@@ -886,7 +901,7 @@ private struct RequestView: View {
         case .notice(let title, _): return title
         case .question: return "Claude hat eine Frage"
         case .limit: return "Limit erreicht"
-        case .reply: return "Claude ist fertig"
+        case .reply: return "Fertig"
         case .compose: return "Nachricht für später"
         }
     }

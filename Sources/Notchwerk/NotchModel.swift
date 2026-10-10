@@ -85,6 +85,16 @@ final class PendingRequest: Identifiable {
     let sessionId: String
     let project: String
     let kind: Kind
+
+    /// Braucht Claude wirklich etwas von dir (Freigabe, Frage, Hinweis)? Nur dann pulsiert der Rand,
+    /// winkt das Maskottchen und steht „Claude braucht dich“ da. Die Antwortmöglichkeit nach dem Ende,
+    /// eine eigene Nachricht für später und der Limit-Hinweis sind ruhig.
+    var needsYou: Bool {
+        switch kind {
+        case .permission, .question, .notice: return true
+        case .limit, .reply, .compose: return false
+        }
+    }
     let createdAt = Date()
     fileprivate let respond: (Answer) -> Void
 
