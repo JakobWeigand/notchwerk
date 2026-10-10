@@ -439,3 +439,121 @@ struct LimitLine: View {
         .minimumScaleFactor(0.8)
     }
 }
+
+// MARK: - Ringe wie im Batterie-Widget
+
+extension LimitSpec {
+    /// Symbol in der Mitte des Rings: Sanduhr für die 5 Stunden, Kalender für die Woche.
+    var symbol: String {
+        switch self {
+        case .session: return "hourglass"
+        case .week: return "calendar"
+        case .fable: return "sparkles"
+        }
+    }
+}
+
+/// Ein Limit als Ring im Stil des Batterie-Widgets von Apple: in der Mitte das Symbol und die Prozent.
+struct LimitRing: View {
+    let limit: LimitSpec
+    let window: WidgetFeed.Window?
+    let diameter: CGFloat
+
+    var body: some View {
+        let line = max(3, diameter * 0.09)
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.12), lineWidth: line)
+            if let percent = window?.percent, percent > 0 {
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(percent, 100) / 100))
+                    .stroke(Brand.usageTint(percent), style: StrokeStyle(lineWidth: line, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .widgetAccentable()
+            }
+            VStack(spacing: 0) {
+                Image(systemName: limit.symbol)
+                    .font(.system(size: diameter * 0.2, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(window.map { "\(Int($0.percent.rounded()))%" } ?? "–")
+                    .font(.system(size: diameter * 0.25, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .padding(line + 1)
+        }
+        .frame(width: diameter, height: diameter)
+        .help(limit.longTitle)
+    }
+}
+
+/// Unter einem Ring: wann das Limit wieder frei ist, kurz („2:12:59“ zählt live, sonst „Di. 10:13“).
+struct ResetShort: View {
+    let window: WidgetFeed.Window?
+    let date: Date
+
+    var body: some View {
+        Group {
+            if let reset = window?.resetsAt {
+                if reset <= date {
+                    Text("frei")
+                } else if reset.timeIntervalSince(date) < 24 * 3600 {
+                    Text(reset, style: .timer)
+                } else {
+                    Text(reset, format: .dateTime.weekday(.abbreviated).hour().minute())
+                }
+            } else {
+                Text(" ")
+            }
+        }
+        .font(.system(size: 8.5))
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+        .multilineTextAlignment(.center)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+    }
+}
+
+/// Ein Konto: Überschrift (bei mehreren Konten der Name, sonst „Claude“), darunter die Ringe nebeneinander.
+struct AccountRings: View {
+    let title: String
+    let account: WidgetFeed.Account
+    let limits: [LimitSpec]
+    let date: Date
+    let diameter: CGFloat
+    var showsReset = false
+    var live: (updatedAt: Date, isStale: Bool)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Brand.orange)
+                    .widgetAccentable()
+                    .lineLimit(1)
+                Spacer(minLength: 2)
+                if let live {
+                    LiveBadge(updatedAt: live.updatedAt, isStale: live.isStale)
+                }
+            }
+            if let problem = account.problemText, account.windows.isEmpty {
+                ProblemNote(text: problem)
+                    .frame(height: diameter, alignment: .center)
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(limits, id: \.self) { limit in
+                        let window = account.window(limit, at: date)
+                        VStack(spacing: 3) {
+                            LimitRing(limit: limit, window: window, diameter: diameter)
+                            if showsReset { ResetShort(window: window, date: date) }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+}

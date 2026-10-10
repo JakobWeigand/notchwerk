@@ -101,6 +101,8 @@ struct WidgetFrame<Content: View>: View {
                 EmptyFeedView()
             }
         }
+        // Etwa ein Millimeter Luft zusätzlich zum Rand, den macOS vorgibt.
+        .padding(5)
         .environment(\.locale, Locale(identifier: "de_DE"))
         .notchwerkWidgetBackground()
         .widgetURL(usageURL)
@@ -256,17 +258,19 @@ struct OverviewView: View {
         }
     }
 
-    @ViewBuilder
+    /// Klein: je Konto eine Zeile Ringe wie im Batterie-Widget, darüber der Name.
     private func small(_ feed: WidgetFeed) -> some View {
-        if feed.accounts.count > 1 {
-            // Je Konto ein Abschnitt, untereinander.
-            VStack(alignment: .leading, spacing: limits.count > 2 ? 7 : 10) {
-                sections(feed, count: 2, style: limits.count > 2 ? .compact : .comfortable)
+        let accounts = Array(feed.accounts.prefix(2))
+        let several = accounts.count > 1
+        let diameter: CGFloat = limits.count > 2 ? (several ? 32 : 38) : (several ? 40 : 52)
+        return VStack(alignment: .leading, spacing: several ? 8 : 6) {
+            ForEach(accounts) { account in
+                AccountRings(title: several ? account.name : "Claude", account: account, limits: limits,
+                             date: entry.date, diameter: diameter, showsReset: !several,
+                             live: account.id == accounts.first?.id ? (feed.updatedAt, entry.isStale) : nil)
             }
-            .frame(maxHeight: .infinity)
-        } else {
-            smallSingle(feed)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func smallSingle(_ feed: WidgetFeed) -> some View {
@@ -307,16 +311,15 @@ struct OverviewView: View {
                 .frame(maxHeight: .infinity)
                 FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
-        } else if limits.count <= 2 {
-            // Untereinander: „Privat“ mit seinen Balken, darunter „Arbeit“.
-            VStack(alignment: .leading, spacing: 12) {
-                sections(feed, count: 2, style: .wide)
-            }
-            .frame(maxHeight: .infinity)
         } else {
-            // Mit Fable sind es drei Balken je Konto: dann nebeneinander, sonst reicht die Höhe nicht.
-            HStack(alignment: .top, spacing: 18) {
-                sections(feed, count: 2, style: .comfortable)
+            // Je Konto eine Spalte: Name, Ringe und darunter, wann sie wieder frei sind.
+            let accounts = Array(feed.accounts.prefix(2))
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(accounts) { account in
+                    AccountRings(title: account.name, account: account, limits: limits, date: entry.date,
+                                 diameter: limits.count > 2 ? 40 : 50, showsReset: true,
+                                 live: account.id == accounts.first?.id ? (feed.updatedAt, entry.isStale) : nil)
+                }
             }
             .frame(maxHeight: .infinity)
         }
