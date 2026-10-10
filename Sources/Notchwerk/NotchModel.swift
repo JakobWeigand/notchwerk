@@ -25,6 +25,8 @@ struct SessionInfo: Identifiable, Equatable {
     var limitSince: Date?
     /// Titel des Chats aus dem Transkript (umbenannt oder von Claude Code vergeben), siehe SessionTitles.
     var chatTitle: String?
+    /// Wann du zuletzt eine Nachricht geschickt hast. Ein Abbruch davor ist erledigt.
+    var promptAt: Date?
 
     /// Projektordner, lesbar: „wuerfelbecher-app“ → „Wuerfelbecher App“. Der echte Pfad steht im Tooltip.
     var projectName: String {
@@ -257,6 +259,7 @@ final class NotchModel: ObservableObject {
 
         case "UserPromptSubmit":
             session.limitSince = nil
+            session.promptAt = Date()
             session.state = .working
             session.detail = "Denkt nach …"
             sessions[sessionId] = session
@@ -532,7 +535,7 @@ final class NotchModel: ObservableObject {
             guard session.state == .working || session.state == .waiting else { continue }
             refreshTitle(for: id)
             if let path = session.transcriptPath,
-               let result = Self.transcriptStatus(path, lastSize: session.transcriptSize) {
+               let result = Self.transcriptStatus(path, lastSize: session.transcriptSize, promptAt: session.promptAt) {
                 session.transcriptSize = result.size
                 if result.interrupted {
                     session.state = .idle
@@ -558,25 +561,57 @@ final class NotchModel: ObservableObject {
     }
 
     /// Liest nur, wenn sich die Datei verändert hat, und nur das Ende. Der Abbruch steht als
-    /// Eintrag „[Request interrupted by user]“ ganz hinten im Transkript.
-    private nonisolated static func transcriptStatus(_ path: String, lastSize: UInt64) -> (size: UInt64, interrupted: Bool)? {
+    /// Nachricht „[Request interrupted by user]“ im Transkript. Entscheidend ist die letzte
+    /// Nachricht von dir oder Claude; Zeilen dazwischen (Titel, Hooks, Warteschlange …) zählen nicht.
+    /// Nicht als Abbruch gilt:
+    /// - ein Abbruch, der älter ist als deine letzte Nachricht (du hast danach weitergeschrieben),
+    /// - eine Nachricht aus der Warteschlange, die nach dem Abbruch gestartet wurde.
+    /// Früher reichte es, wenn der Abbruch irgendwo in den letzten vier Zeilen stand. Dann galt eine
+    /// Sitzung nach Abbruch und neuer Nachricht als „Abgebrochen“, obwohl Claude schon wieder arbeitete.
+    private nonisolated static func transcriptStatus(_ path: String, lastSize: UInt64,
+                                                     promptAt: Date?) -> (size: UInt64, interrupted: Bool)? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let size = (attrs[.size] as? NSNumber)?.uint64Value, size != lastSize else { return nil }
         guard let handle = FileHandle(forReadingAtPath: path) else { return (size, false) }
         defer { try? handle.close() }
-        let tail: UInt64 = 16_384
+        let tail: UInt64 = 65_536
         try? handle.seek(toOffset: size > tail ? size - tail : 0)
         let data = handle.readData(ofLength: Int(tail))
-        guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
-            return (size, false)
-        }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-        for line in lines.suffix(4).reversed() {
-            if line.contains("[Request interrupted by user") { return (size, true) }
-            if line.contains("\"type\":\"assistant\"") { return (size, false) }
-            if line.contains("\"type\":\"user\""), !line.contains("tool_result") { return (size, false) }
+        // Die erste Zeile ist meist nur halb gelesen und fällt beim Parsen heraus.
+        let lines = data.split(separator: 0x0A).suffix(60)
+        for raw in lines.reversed() {
+            guard let obj = try? JSONSerialization.jsonObject(with: Data(raw)) as? [String: Any],
+                  let type = obj["type"] as? String else { continue }
+            switch type {
+            case "queue-operation":
+                // Eine Nachricht aus der Warteschlange startet: was davor war, ist vorbei.
+                if obj["operation"] as? String == "dequeue" { return (size, false) }
+            case "assistant":
+                return (size, false)
+            case "user":
+                let text = String(decoding: raw, as: UTF8.self)
+                if text.contains("[Request interrupted by user") {
+                    if let promptAt, let at = timestamp(obj["timestamp"]), at < promptAt.addingTimeInterval(-2) {
+                        return (size, false)
+                    }
+                    return (size, true)
+                }
+                // Werkzeug-Ergebnisse gehören noch zur laufenden Antwort, weiter zurück schauen.
+                if !text.contains("\"tool_result\"") { return (size, false) }
+            default:
+                continue
+            }
         }
         return (size, false)
+    }
+
+    private nonisolated static func timestamp(_ value: Any?) -> Date? {
+        guard let text = value as? String else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: text) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: text)
     }
 
     /// Alle offenen Anfragen ans Terminal zurückgeben (beim Pausieren).
