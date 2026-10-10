@@ -260,17 +260,10 @@ struct OverviewView: View {
     private func small(_ feed: WidgetFeed) -> some View {
         if feed.accounts.count > 1 {
             // Je Konto ein Abschnitt, untereinander.
-            VStack(alignment: .leading, spacing: limits.count > 2 ? 5 : 8) {
-                ForEach(feed.accounts.prefix(2)) { account in
-                    AccountSection(account: account, limits: limits, date: entry.date,
-                                   style: limits.count > 2 ? .compact : .comfortable)
-                }
-                Spacer(minLength: 0)
-                // Mit drei Limits je Konto ist im kleinen Widget kein Platz mehr für die Zeile.
-                if limits.count <= 2 || entry.isStale {
-                    FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
-                }
+            VStack(alignment: .leading, spacing: limits.count > 2 ? 7 : 10) {
+                sections(feed, count: 2, style: limits.count > 2 ? .compact : .comfortable)
             }
+            .frame(maxHeight: .infinity)
         } else {
             smallSingle(feed)
         }
@@ -316,25 +309,16 @@ struct OverviewView: View {
             }
         } else if limits.count <= 2 {
             // Untereinander: „Privat“ mit seinen Balken, darunter „Arbeit“.
-            VStack(alignment: .leading, spacing: 9) {
-                ForEach(feed.accounts.prefix(2)) { account in
-                    AccountSection(account: account, limits: limits, date: entry.date, style: .wide)
-                }
-                Spacer(minLength: 0)
-                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
+            VStack(alignment: .leading, spacing: 12) {
+                sections(feed, count: 2, style: .wide)
             }
+            .frame(maxHeight: .infinity)
         } else {
             // Mit Fable sind es drei Balken je Konto: dann nebeneinander, sonst reicht die Höhe nicht.
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 16) {
-                    ForEach(feed.accounts.prefix(2)) { account in
-                        AccountSection(account: account, limits: limits, date: entry.date, style: .comfortable)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                Spacer(minLength: 0)
-                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
+            HStack(alignment: .top, spacing: 18) {
+                sections(feed, count: 2, style: .comfortable)
             }
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -360,14 +344,19 @@ struct OverviewView: View {
                 FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         } else {
-            VStack(alignment: .leading, spacing: 14) {
-                WidgetHeader(title: "Claude Nutzung")
-                ForEach(feed.accounts.prefix(limits.count > 2 ? 2 : 3)) { account in
-                    AccountSection(account: account, limits: limits, date: entry.date, style: .roomy)
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                sections(feed, count: limits.count > 2 ? 2 : 3, style: .roomy)
                 Spacer(minLength: 0)
-                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
+        }
+    }
+
+    /// Die Konten als Abschnitte. Der erste trägt rechts den Live-Zähler.
+    private func sections(_ feed: WidgetFeed, count: Int, style: LimitLine.Style) -> some View {
+        ForEach(Array(feed.accounts.prefix(count))) { account in
+            AccountSection(account: account, limits: limits, date: entry.date, style: style,
+                           live: account.id == feed.accounts.first?.id ? (feed.updatedAt, entry.isStale) : nil)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

@@ -309,27 +309,31 @@ struct EmptyFeedView: View {
 
 // MARK: - Ein Konto mit Balken
 
-/// Ein Konto als Abschnitt: der Name als Überschrift, darunter je Limit eine Zeile mit Balken.
-/// So stehen mehrere Konten untereinander, z.B. „Privat“ und darunter „Arbeit“.
+/// Ein Konto als Abschnitt: der Name als Überschrift, darunter je Limit eine schlichte Zeile mit
+/// dünnem Balken. Mehrere Konten stehen untereinander, z.B. „Privat“ und darunter „Arbeit“.
 struct AccountSection: View {
     let account: WidgetFeed.Account
     let limits: [LimitSpec]
     let date: Date
     var style: LimitLine.Style = .compact
+    /// Beim ersten Abschnitt rechts neben dem Namen: seit wann die Zahlen da sind, zählt live mit.
+    var live: (updatedAt: Date, isStale: Bool)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: style == .compact ? 3 : 5) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(account.name)
-                    .font(.system(size: style == .compact ? 12 : 13.5, weight: .bold))
+                    .font(.system(size: style == .roomy ? 13 : 12, weight: .semibold))
                     .foregroundStyle(Brand.orange)
                     .widgetAccentable()
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                // Zahlen vom letzten Abruf, gerade klappt es nicht: nur ein kleines Zeichen.
-                if account.problemText != nil, !account.windows.isEmpty {
+                if let live {
+                    LiveBadge(updatedAt: live.updatedAt, isStale: live.isStale)
+                } else if account.problemText != nil, !account.windows.isEmpty {
+                    // Zahlen vom letzten Abruf, gerade klappt es nicht: nur ein kleines Zeichen.
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 8.5, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -344,16 +348,42 @@ struct AccountSection: View {
     }
 }
 
-/// Eine Zeile: Name des Limits, Balken, Prozent. Je nach Platz mit „neu in …“ daneben oder darunter.
+/// Klein und unaufdringlich: grüner Punkt und „0:34“, zählt jede Sekunde hoch.
+/// Ist der Stand alt, stattdessen eine Uhr und die Uhrzeit des letzten Abrufs.
+struct LiveBadge: View {
+    let updatedAt: Date
+    let isStale: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if isStale {
+                Image(systemName: "clock")
+                Text(updatedAt, format: .dateTime.hour().minute())
+            } else {
+                // Ein Text, damit der Punkt am Zähler klebt: Zeit-Texte nehmen sonst die volle Breite ein.
+                (Text("●").font(.system(size: 6)).foregroundColor(Brand.allow) + Text(" ")
+                    + Text(updatedAt, style: .timer))
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 52, alignment: .trailing)
+            }
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+}
+
+/// Eine Zeile: Name des Limits, dünner Balken, Prozent. Je nach Platz mit „neu in …“ daneben oder darunter.
 struct LimitLine: View {
     enum Style {
-        /// Klein: alles in einer Zeile.
+        /// Klein mit drei Limits: so knapp wie möglich.
         case compact
-        /// Wie compact, nur größer, wo der Platz reicht.
+        /// Klein mit zwei Limits.
         case comfortable
-        /// Mittel: in einer Zeile, rechts wann es neu losgeht.
+        /// Mittel: rechts wann es neu losgeht.
         case wide
-        /// Groß: dickerer Balken, darunter wann es neu losgeht.
+        /// Groß: darunter wann es neu losgeht.
         case roomy
     }
 
@@ -362,31 +392,33 @@ struct LimitLine: View {
     let date: Date
     var style: Style = .compact
 
+    private var labelSize: CGFloat { style == .compact ? 9.5 : (style == .roomy ? 11 : 10) }
+    private var barHeight: CGFloat { style == .compact ? 4 : (style == .roomy ? 6 : 5) }
+    private var percentSize: CGFloat { style == .compact ? 10.5 : (style == .roomy ? 13 : 11.5) }
+
     var body: some View {
-        let roomy = style == .roomy
-        let big = style != .compact
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(limit.title)
-                    .font(.system(size: big ? 11.5 : 10.5, weight: .medium))
+                    .font(.system(size: labelSize))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(width: roomy ? 52 : (big ? 46 : 42), alignment: .leading)
-                UsageBar(percent: window?.percent, height: big ? 8.5 : 7)
+                    .minimumScaleFactor(0.85)
+                    .frame(width: style == .roomy ? 50 : 40, alignment: .leading)
+                UsageBar(percent: window?.percent, height: barHeight)
                 Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
-                    .font(.system(size: big ? 13 : 11, weight: .bold, design: .rounded))
+                    .font(.system(size: percentSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .lineLimit(1)
-                    .frame(width: big ? 38 : 32, alignment: .trailing)
+                    .frame(width: style == .roomy ? 40 : 32, alignment: .trailing)
                 if style == .wide {
                     reset
-                        .frame(width: 92, alignment: .trailing)
+                        .frame(width: 86, alignment: .trailing)
                 }
             }
-            if roomy {
+            if style == .roomy {
                 reset
-                    .padding(.leading, 58)
+                    .padding(.leading, 56)
             }
         }
     }
@@ -400,8 +432,9 @@ struct LimitLine: View {
                 Text(limit.missingText)
             }
         }
-        .font(.system(size: 9.5))
+        .font(.system(size: 9))
         .foregroundStyle(.secondary)
+        .monospacedDigit()
         .lineLimit(1)
         .minimumScaleFactor(0.8)
     }
