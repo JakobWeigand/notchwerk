@@ -267,7 +267,7 @@ struct OverviewView: View {
             ForEach(accounts) { account in
                 AccountRings(title: several ? account.name : "Claude", account: account, limits: limits,
                              date: entry.date, diameter: diameter, showsReset: !several,
-                             live: account.id == accounts.first?.id ? (feed.updatedAt, entry.isStale) : nil)
+                             live: account.id == accounts.first?.id && entry.isStale ? (feed.updatedAt, true) : nil)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -318,7 +318,7 @@ struct OverviewView: View {
                 ForEach(accounts) { account in
                     AccountRings(title: account.name, account: account, limits: limits, date: entry.date,
                                  diameter: limits.count > 2 ? 40 : 50, showsReset: true,
-                                 live: account.id == accounts.first?.id ? (feed.updatedAt, entry.isStale) : nil)
+                                 live: account.id == accounts.first?.id && entry.isStale ? (feed.updatedAt, true) : nil)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -354,11 +354,11 @@ struct OverviewView: View {
         }
     }
 
-    /// Die Konten als Abschnitte. Der erste trägt rechts den Live-Zähler.
+    /// Die Konten als Abschnitte. Ist der Stand veraltet, steht beim ersten rechts die Uhrzeit.
     private func sections(_ feed: WidgetFeed, count: Int, style: LimitLine.Style) -> some View {
         ForEach(Array(feed.accounts.prefix(count))) { account in
             AccountSection(account: account, limits: limits, date: entry.date, style: style,
-                           live: account.id == feed.accounts.first?.id ? (feed.updatedAt, entry.isStale) : nil)
+                           live: account.id == feed.accounts.first?.id && entry.isStale ? (feed.updatedAt, true) : nil)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

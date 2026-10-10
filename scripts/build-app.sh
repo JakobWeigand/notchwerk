@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.6.3}"
+VERSION="${VERSION:-0.6.4}"
 # Fortlaufend, bei jedem Build größer: Minuten seit 1.1.2026. macOS merkt sich die Widgets je
 # Build-Nummer und übernimmt neue Widgets erst mit einer höheren. Kurz, weil zu lange Nummern stören.
 BUILD="${BUILD:-$(( ($(date +%s) - 1767225600) / 60 ))}"

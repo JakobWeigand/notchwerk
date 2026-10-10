@@ -316,7 +316,7 @@ struct AccountSection: View {
     let limits: [LimitSpec]
     let date: Date
     var style: LimitLine.Style = .compact
-    /// Beim ersten Abschnitt rechts neben dem Namen: seit wann die Zahlen da sind, zählt live mit.
+    /// Nur wenn die Zahlen veraltet sind: rechts neben dem ersten Namen die Uhrzeit des letzten Abrufs.
     var live: (updatedAt: Date, isStale: Bool)?
 
     var body: some View {
