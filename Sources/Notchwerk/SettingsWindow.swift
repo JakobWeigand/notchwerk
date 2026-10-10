@@ -92,6 +92,9 @@ struct SettingsView: View {
                         ForEach(1...3, id: \.self) { Text("\($0)").tag($0) }
                     }
                 }
+                Picker("„Fertig“ oben zeigen für", selection: $prefs.doneDisplaySeconds) {
+                    ForEach(Preferences.doneDisplayChoices, id: \.self) { Text("\($0) Sekunden").tag($0) }
+                }
                 Toggle("Nutzung (Sitzungs- und Wochenlimit) zeigen", isOn: $prefs.showUsage)
                 Text("Für die Nutzung liest die App den Claude Code Login aus dem Schlüsselbund und fragt nur die Limits bei api.anthropic.com ab, so wie /usage in Claude Code. Das kostet nichts und zählt nicht gegen die Limits. Hinweis: Anthropic sieht den Login-Token laut Nutzungsbedingungen nur für Claude Code und claude.ai vor. Diese reine Lese-Abfrage ist formal eine Grauzone, deshalb ist sie standardmäßig aus und auf eigene Verantwortung.")
                     .font(.callout)
@@ -678,17 +681,17 @@ private struct AdvancedSection: View {
                                           if on { HookInstaller.refreshOutdated() }
                                       }),
                         risks: [
-                            "Wenn Claude fertig ist, hält die App Claude Code kurz fest, damit du im Notch antworten kannst. In der Zeit wartet das Terminal.",
-                            "Claudes letzte Antwort erscheint über allen Fenstern, auch beim Teilen des Bildschirms oder in einer Präsentation.",
+                            "Wenn Claude fertig ist, hält die App Claude Code fest, solange „Fertig“ oben steht (einstellbar unter Sitzungen), nach einem Klick auf „Antworten …“ bis zur Wartezeit unten. In der Zeit wartet das Terminal.",
                             "Wer an deinem entsperrten Mac sitzt, kann Claude von jeder App aus Anweisungen geben.",
                         ],
                         safeguards: [
+                            "Oben steht nur „Fertig“ und das Projekt, nie Claudes letzte Nachricht. Das Eingabefeld erscheint erst nach „Antworten …“.",
                             "Das Eingabefeld bekommt nie von selbst den Fokus. Erst ein Klick hinein nimmt Tastatureingaben an.",
                             "„Schließen“ gibt Claude Code sofort frei, nach Ablauf der Wartezeit geht es von selbst weiter.",
                             "Der Text geht nur als Anweisung an Claude Code, nie an eine Shell, und nur über den lokalen Server mit Token.",
                         ])
                     if prefs.replyInNotch {
-                        Picker("Claude wartet auf eine Antwort", selection: $prefs.replyWindow) {
+                        Picker("Nach „Antworten …“ wartet Claude", selection: $prefs.replyWindow) {
                             ForEach(Preferences.replyWindowChoices, id: \.self) { seconds in
                                 Text(seconds < 60 ? "\(seconds) Sekunden" : "\(seconds / 60) Minute\(seconds == 60 ? "" : "n")").tag(seconds)
                             }

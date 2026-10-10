@@ -155,6 +155,8 @@ final class Preferences: ObservableObject {
     @Published var replyInNotch: Bool { didSet { defaults.set(replyInNotch, forKey: "replyInNotch") } }
     /// Sekunden, die Claude Code nach dem Ende auf eine Antwort im Notch wartet.
     @Published var replyWindow: Int { didSet { defaults.set(replyWindow, forKey: "replyWindow") } }
+    /// So viele Sekunden steht „Fertig“ oben, wenn Claude eine Antwort beendet hat.
+    @Published var doneDisplaySeconds: Int { didSet { defaults.set(doneDisplaySeconds, forKey: "doneDisplaySeconds") } }
 
     static let mascotSizeRange: ClosedRange<Double> = 20...80
     /// Stufen fürs Menü. Klein ist die bisherige Größe.
@@ -197,6 +199,7 @@ final class Preferences: ObservableObject {
             "followUpsEnabled": false,
             "replyInNotch": false,
             "replyWindow": 60,
+            "doneDisplaySeconds": 5,
         ])
         enabled = defaults.bool(forKey: "enabled")
         displayMode = DisplayMode(rawValue: defaults.string(forKey: "displayMode") ?? "") ?? .notch
@@ -232,7 +235,11 @@ final class Preferences: ObservableObject {
         replyInNotch = defaults.bool(forKey: "replyInNotch")
         let window = defaults.integer(forKey: "replyWindow")
         replyWindow = Self.replyWindowChoices.contains(window) ? window : 60
+        let shown = defaults.integer(forKey: "doneDisplaySeconds")
+        doneDisplaySeconds = Self.doneDisplayChoices.contains(shown) ? shown : 5
     }
+
+    static let doneDisplayChoices = [3, 5, 10, 20, 30]
 
     /// Wie lange Claude Code nach dem Ende auf eine Antwort im Notch wartet. Höchstens 5 Minuten,
     /// der Hook gibt nach `HookInstaller.stopMaxTime` ohnehin auf.

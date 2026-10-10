@@ -228,7 +228,9 @@ enum Layout {
             let head: CGFloat = tile ? 10 : top + 6
             return CGSize(width: expandedWidth, height: head + listHeader + 4 + body + footer + usage + 12)
         case .request:
-            return CGSize(width: expandedWidth, height: top + requestHeight(model.currentRequest))
+            let req = model.currentRequest
+            return CGSize(width: expandedWidth,
+                          height: top + requestHeight(req, replying: req.map { model.replying[$0.id] != nil } ?? false))
         }
     }
 
@@ -237,13 +239,13 @@ enum Layout {
         active <= rows ? CGFloat(active) : CGFloat(rows) + 0.5
     }
 
-    static func requestHeight(_ req: PendingRequest?) -> CGFloat {
+    static func requestHeight(_ req: PendingRequest?, replying: Bool) -> CGFloat {
         guard let req else { return 120 }
         switch req.kind {
         case .permission: return 176
         case .notice: return 132
         case .limit: return 140
-        case .reply(let last, _): return last.isEmpty ? 150 : 200
+        case .finished: return replying ? 150 : 74
         case .compose: return 186
         case .question(let set):
             if set.questions.count == 1, !set.questions[0].multiSelect {

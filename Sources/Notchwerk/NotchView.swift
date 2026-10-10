@@ -307,7 +307,7 @@ private struct NotchBody: View {
 
     private var mascotMood: Mascot.Mood {
         if attention || model.needsAttention { return .attention }
-        if case .reply = model.currentRequest?.kind { return .happy }
+        if case .finished = model.currentRequest?.kind { return .happy }
         if case .banner = presentation, model.banner?.style != .info { return .happy }
         if model.isWorking { return .working }
         return .idle
@@ -320,7 +320,9 @@ private struct NotchBody: View {
             if let req = model.currentRequest {
                 RequestView(request: req, more: model.pending.count - 1,
                             answer: { answer in model.answer(req.id, with: answer) },
-                            compose: { model.composeFollowUp(for: req.sessionId) })
+                            replyDeadline: model.replying[req.id],
+                            compose: { model.composeFollowUp(for: req.sessionId) },
+                            startReply: { model.startReply(req.id) })
                 .id(req.id)
             }
         case .banner:
@@ -780,8 +782,12 @@ private struct RequestView: View {
     let request: PendingRequest
     let more: Int
     let answer: (PendingRequest.Answer) -> Void
+    /// Nach „Antworten …“ auf der Fertig-Meldung: bis wann Claude Code wartet.
+    let replyDeadline: Date?
     /// Nachricht für später schreiben (aus dem Limit-Hinweis).
     let compose: () -> Void
+    /// „Antworten …“ auf der Fertig-Meldung.
+    let startReply: () -> Void
     /// Erlauben erst kurz nach dem Erscheinen, damit ein Klick, der eigentlich woanders hin
     /// sollte, nichts freigibt. Die Ansicht entsteht pro Anfrage neu (.id), also auch pro Anfrage.
     @State private var armed = false
@@ -790,6 +796,44 @@ private struct RequestView: View {
     @State private var truncated = false
 
     var body: some View {
+        if case .finished = request.kind, replyDeadline == nil {
+            finishedCompact
+        } else {
+            card
+        }
+    }
+
+    /// Fertig, mit „Antworten …“. Sieht aus wie die normale Fertig-Meldung und fragt nichts.
+    private var finishedCompact: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Theme.orange.opacity(0.16))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Theme.orange)
+                }
+                .frame(width: 38, height: 38)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fertig")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.cream)
+                    Text(request.project)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { answer(.terminal) }
+            .accessibilityElement(children: .combine)
+            NotchButton("Antworten …", role: .secondary, action: startReply)
+                .help("Claude eine weitere Anweisung geben. Claude Code wartet dann bis zur eingestellten Zeit.")
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             switch request.kind {
@@ -843,17 +887,9 @@ private struct RequestView: View {
                     }
                     NotchButton("Verstanden", role: .primary) { answer(.terminal) }
                 }
-            case .reply(let last, let deadline):
-                if !last.isEmpty {
-                    Text(last)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Theme.cream.opacity(0.8))
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                MessageComposer(prompt: "Optional: weitere Anweisung an Claude …", sendTitle: "Senden", cancelTitle: "Schließen",
-                                deadline: deadline,
+            case .finished:
+                MessageComposer(prompt: "Weitere Anweisung an Claude …", sendTitle: "Senden", cancelTitle: "Schließen",
+                                deadline: replyDeadline,
                                 send: { answer(.message($0)) },
                                 cancel: { answer(.terminal) })
             case .compose:
@@ -875,7 +911,7 @@ private struct RequestView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            if case .reply = request.kind {
+            if case .finished = request.kind {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.allow)
@@ -906,7 +942,7 @@ private struct RequestView: View {
         case .notice(let title, _): return title
         case .question: return "Claude hat eine Frage"
         case .limit: return "Limit erreicht"
-        case .reply: return "Fertig"
+        case .finished: return "Fertig"
         case .compose: return "Nachricht für später"
         }
     }

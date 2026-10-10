@@ -22,7 +22,7 @@ Notchwerk ist ein privates Hobbyprojekt von Jakob Weigand. Es ist kostenlos, ver
 | Claude arbeitet | Notch wird breiter, links dreht sich ein Funke, rechts läuft das Maskottchen. Überfahren zeigt die Sitzungen, die gerade arbeiten | nur das Maskottchen, das gemächlich auf der Stelle geht. Überfahren zeigt die Sitzungen |
 | Claude braucht eine Freigabe | Notch klappt auf, pulsiert und zeigt Befehl mit **Erlauben / Immer erlauben / Ablehnen / Im Terminal** | gleiche Karte oben rechts |
 | Claude hat eine Frage | Frage und Antwortmöglichkeiten | gleich |
-| Claude ist fertig | kurze Einblendung „Fertig“ mit Ton, die Zeile verschwindet kurz danach | gleich |
+| Claude ist fertig | kurze Einblendung „Fertig“ mit Ton (3 bis 30 Sekunden, einstellbar unter Sitzungen), die Zeile verschwindet kurz danach | gleich |
 | Claude App wird gestartet | kurze Begrüßung | gleich |
 
 Weitere Punkte
@@ -53,7 +53,7 @@ Ganz unten in den Einstellungen, zugeklappt und standardmäßig aus. Jede Funkti
 | Updates automatisch installieren | installiert gefundene Updates ohne Rückfrage, frühestens 24 Stunden nach Erscheinen und nur, wenn keine Sitzung arbeitet | eine manipulierte Version käme ungesehen auf den Mac (die Prüfsumme liegt im selben Release, die Signatur ist ad hoc) |
 | Bildschirm anlassen | beim Wachhalten auch den Bildschirm anlassen | der Mac sperrt sich nicht von selbst |
 | Nachrichten an Claude planen | eine Nachricht, die Claude bekommt, sobald die Sitzung das nächste Mal fertig ist, z.B. nach dem Limit. Planen über das Sprechblasen-Symbol neben einer Sitzung oder über **Nachricht für danach** beim Limit-Hinweis | Claude arbeitet unbeaufsichtigt weiter, mit allem, was die Sitzung darf |
-| Claude im Notch antworten | wenn Claude fertig ist, zeigt der Notch die letzte Antwort und ein Eingabefeld; Claude Code wartet so lange (30 Sekunden bis 5 Minuten) | das Terminal wartet in der Zeit; Claudes Antwort ist über allen Fenstern sichtbar |
+| Claude im Notch antworten | die Fertig-Meldung bekommt einen Knopf **Antworten …**; danach erscheint ein Eingabefeld und Claude Code wartet (30 Sekunden bis 5 Minuten). Claudes letzte Nachricht steht nie oben, der Notch fragt nur, wenn Claude blockiert ist | das Terminal wartet, solange „Fertig“ zu sehen ist bzw. bis zur Antwort |
 
 Beide Nachrichten-Funktionen nutzen den offiziellen Stop-Hook von Claude Code (`decision: block`): Der Text geht nur als Anweisung an Claude, nie an ein Terminal oder eine Shell. Tastendrücke ins Terminal zu schicken wäre einfacher, könnte aber, wenn Claude dort schon beendet ist, als Shell-Befehl ausgeführt werden. Deshalb macht Notchwerk das nicht. Eine Nachricht an eine Sitzung, die gerade nichts tut, lässt sich so allerdings nicht schicken. Sie wartet, bis die Sitzung das nächste Mal fertig ist.
 

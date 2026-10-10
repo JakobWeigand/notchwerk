@@ -41,7 +41,9 @@ if ! swift build "${ARGS[@]}" >"$LOG" 2>&1; then
     export SDKROOT="$sdk"
     ARGS+=(--scratch-path ".build/$(basename "$sdk")")
     if swift build "${ARGS[@]}" >"$LOG" 2>&1; then OK=1; break; fi
-    unset 'ARGS[-1]'; unset 'ARGS[-1]'
+    # Die beiden zuletzt angehängten Argumente wieder weg. Ohne negative Indizes, die kennt
+    # die Bash 3.2 von macOS nicht.
+    ARGS=("${ARGS[@]:0:${#ARGS[@]}-2}")
   done
   if [ -z "$OK" ]; then
     cat "$LOG"

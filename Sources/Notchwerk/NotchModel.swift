@@ -65,8 +65,10 @@ final class PendingRequest: Identifiable {
         case notice(title: String, message: String)
         /// Limit erreicht. Claude Code macht nach dem Zurücksetzen von selbst weiter.
         case limit(message: String)
-        /// Claude ist fertig und wartet bis `deadline` auf eine Antwort im Notch (erweitert).
-        case reply(lastMessage: String, deadline: Date)
+        /// Claude ist fertig. Mit „Im Notch antworten“ (erweitert) wartet Claude Code, solange die
+        /// Meldung steht, und nach einem Klick auf „Antworten“ bis zur eingestellten Wartezeit.
+        /// Claudes letzte Nachricht steht hier bewusst nicht: Oben fragt nur, wer blockiert ist.
+        case finished
         /// Nachricht für später schreiben (erweitert). Kommt von dir, nicht von Claude Code.
         case compose
     }
@@ -92,7 +94,7 @@ final class PendingRequest: Identifiable {
     var needsYou: Bool {
         switch kind {
         case .permission, .question, .notice: return true
-        case .limit, .reply, .compose: return false
+        case .limit, .finished, .compose: return false
         }
     }
     let createdAt = Date()
@@ -147,6 +149,8 @@ final class NotchModel: ObservableObject {
     @Published private(set) var sessions: [String: SessionInfo] = [:]
     @Published private(set) var pending: [PendingRequest] = []
     @Published private(set) var banner: Banner?
+    /// Fertig-Meldungen, bei denen du auf „Antworten“ geklickt hast: bis wann Claude Code wartet.
+    @Published private(set) var replying: [UUID: Date] = [:]
     @Published var claudeAppRunning = false
 
     private var bannerTask: Task<Void, Never>?
@@ -391,23 +395,21 @@ final class NotchModel: ObservableObject {
             session.detail = "Fertig"
             sessions[sessionId] = session
             Sounds.play(.done)
-            // Im Notch antworten (erweitert): Claude Code wartet kurz auf deine Antwort.
+            let shown = TimeInterval(prefs.doneDisplaySeconds)
+            // Im Notch antworten (erweitert): Claude Code wartet, solange „Fertig“ zu sehen ist.
             if prefs.replyInNotch && prefs.enabled {
-                let last = Self.clip(event["last_assistant_message"] as? String ?? "", to: 600)
-                let window = TimeInterval(prefs.replyWindow)
-                let request = PendingRequest(sessionId: sessionId, project: session.displayName,
-                                             kind: .reply(lastMessage: last, deadline: Date().addingTimeInterval(window))) { answer in
+                let request = PendingRequest(sessionId: sessionId, project: session.displayName, kind: .finished) { answer in
                     if case .message(let text) = answer {
                         reply(HookResponses.continueWith(text))
                     } else {
                         reply(nil)
                     }
                 }
-                enqueue(request, onClose: onClose, timeout: window, sound: false)
+                enqueue(request, onClose: onClose, timeout: shown, sound: false)
                 break
             }
             reply(nil)
-            showBanner(Banner(style: .done, title: "Fertig", subtitle: session.displayName), duration: 3)
+            showBanner(Banner(style: .done, title: "Fertig", subtitle: session.displayName), duration: shown)
             settleLater(sessionId)
 
         case "StopFailure":
@@ -596,12 +598,27 @@ final class NotchModel: ObservableObject {
             // Hook wurde abgebrochen (z.B. im Terminal beantwortet oder Esc gedrückt).
             self?.remove(id)
         }
-        let timeout = timeout ?? prefs.permissionTimeout
+        scheduleTimeout(id, after: timeout ?? prefs.permissionTimeout)
+    }
+
+    /// Nach `seconds` ans Terminal zurückgeben, falls bis dahin nicht beantwortet.
+    private func scheduleTimeout(_ id: UUID, after seconds: TimeInterval) {
+        timeouts[id]?.cancel()
         timeouts[id] = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
             guard !Task.isCancelled else { return }
             self?.answer(id, with: .terminal)
         }
+    }
+
+    /// „Antworten …“ auf der Fertig-Meldung: Claude Code wartet jetzt bis zur eingestellten Wartezeit.
+    /// Nie länger, als hook.sh auf die App wartet, sonst wäre die Antwort schon verfallen.
+    func startReply(_ id: UUID) {
+        guard let req = pending.first(where: { $0.id == id }), case .finished = req.kind, replying[id] == nil else { return }
+        let latest = req.createdAt.addingTimeInterval(TimeInterval(HookInstaller.stopMaxTime - 10))
+        let deadline = min(Date().addingTimeInterval(TimeInterval(prefs.replyWindow)), latest)
+        withAnimation(Theme.spring) { replying[id] = deadline }
+        scheduleTimeout(id, after: deadline.timeIntervalSinceNow)
     }
 
     private func enqueueNotice(sessionId: String, project: String, title: String, message: String) {
@@ -623,7 +640,7 @@ final class NotchModel: ObservableObject {
         switch request.kind {
         case .compose, .limit:
             return // nur bei uns, Claude Code wartet nicht darauf
-        case .reply:
+        case .finished:
             guard var session = sessions[request.sessionId] else { return }
             if case .message = answer {
                 session.state = .working
@@ -657,6 +674,7 @@ final class NotchModel: ObservableObject {
     private func remove(_ id: UUID) {
         timeouts[id]?.cancel()
         timeouts[id] = nil
+        replying[id] = nil
         withAnimation(Theme.spring) {
             pending.removeAll { $0.id == id }
         }
@@ -717,12 +735,6 @@ final class NotchModel: ObservableObject {
             Task { @MainActor in FollowUps.shared.plan(text, for: sessionId, project: session.displayName) }
         }
         withAnimation(Theme.spring) { pending.append(request) }
-    }
-
-    /// Ganz kurz, mit sichtbarem „…“, falls gekürzt.
-    private static func clip(_ text: String, to limit: Int) -> String {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.count > limit ? String(t.prefix(limit)) + " …" : t
     }
 
     private func dropRequests(for sessionId: String) {
