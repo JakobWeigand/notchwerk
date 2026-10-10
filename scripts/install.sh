@@ -21,6 +21,8 @@ sleep 0.5
 rm -rf "$TARGET"
 cp -R "dist/Notchwerk.app" "$TARGET"
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
+# Ein noch laufender Widget-Prozess hält die alte Version im Speicher. macOS startet ihn neu.
+pkill -x NotchwerkWidgets >/dev/null 2>&1 || true
 # Damit „Jetzt aktualisieren“ in der App künftig aus diesem Ordner baut, ohne Terminal.
 defaults write io.github.jakobweigand.claude-notch sourceDir "$(pwd)"
 open "$TARGET"

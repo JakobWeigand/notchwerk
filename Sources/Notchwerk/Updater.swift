@@ -299,6 +299,7 @@ final class Updater: ObservableObject {
     fi
     rm -rf "$TARGET.alt"
     xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null
+    pkill -x NotchwerkWidgets 2>/dev/null
     open "$TARGET"
     echo "$(date '+%F %T') Fertig."
 

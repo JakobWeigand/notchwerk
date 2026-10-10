@@ -170,7 +170,7 @@ struct SingleLimitView: View {
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 2)
                 }
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -193,7 +193,7 @@ struct SingleLimitView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
-        if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+        FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
     }
 
     /// Mehrere Konten untereinander: der Name als Überschrift, rechts die Prozent, darunter ein Balken.
@@ -232,7 +232,7 @@ struct SingleLimitView: View {
                 }
             }
             Spacer(minLength: 0)
-            if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+            FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
         }
     }
 }
@@ -260,13 +260,16 @@ struct OverviewView: View {
     private func small(_ feed: WidgetFeed) -> some View {
         if feed.accounts.count > 1 {
             // Je Konto ein Abschnitt, untereinander.
-            VStack(alignment: .leading, spacing: limits.count > 2 ? 6 : 12) {
+            VStack(alignment: .leading, spacing: limits.count > 2 ? 5 : 8) {
                 ForEach(feed.accounts.prefix(2)) { account in
                     AccountSection(account: account, limits: limits, date: entry.date,
                                    style: limits.count > 2 ? .compact : .comfortable)
                 }
                 Spacer(minLength: 0)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                // Mit drei Limits je Konto ist im kleinen Widget kein Platz mehr für die Zeile.
+                if limits.count <= 2 || entry.isStale {
+                    FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
+                }
             }
         } else {
             smallSingle(feed)
@@ -309,7 +312,7 @@ struct OverviewView: View {
                     }
                 }
                 .frame(maxHeight: .infinity)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         } else if limits.count <= 2 {
             // Untereinander: „Privat“ mit seinen Balken, darunter „Arbeit“.
@@ -318,7 +321,7 @@ struct OverviewView: View {
                     AccountSection(account: account, limits: limits, date: entry.date, style: .wide)
                 }
                 Spacer(minLength: 0)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         } else {
             // Mit Fable sind es drei Balken je Konto: dann nebeneinander, sonst reicht die Höhe nicht.
@@ -330,7 +333,7 @@ struct OverviewView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         }
     }
@@ -354,7 +357,7 @@ struct OverviewView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         } else {
             VStack(alignment: .leading, spacing: 14) {
@@ -363,7 +366,7 @@ struct OverviewView: View {
                     AccountSection(account: account, limits: limits, date: entry.date, style: .roomy)
                 }
                 Spacer(minLength: 0)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         }
     }
@@ -435,7 +438,7 @@ struct AccountsView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if entry.isStale { StaleNote(updatedAt: feed.updatedAt) }
+                FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
             }
         }
     }

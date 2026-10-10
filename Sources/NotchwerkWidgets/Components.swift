@@ -2,8 +2,10 @@ import NotchwerkShared
 import SwiftUI
 import WidgetKit
 
-/// Die Limits, die ein Widget zeigen kann.
-enum LimitSpec: Hashable {
+/// Die Limits, die ein Widget zeigen kann. Codable ist Pflicht: macOS speichert Widgets als
+/// archivierte Ansicht, und IDs in ForEach müssen sich dabei sichern lassen. Sonst bleibt das
+/// Widget leer („ID type is not Encodable“).
+enum LimitSpec: String, Hashable, Codable {
     case session, week, fable
 
     var kind: LimitKind {
@@ -212,7 +214,7 @@ struct UsageBarRow: View {
     }
 }
 
-/// „neu in 2 Std., 13 Min.“: zählt von selbst herunter, ohne dass das Widget neu laden muss.
+/// „neu in 2:13:45“: zählt jede Sekunde herunter, ohne dass das Widget neu laden muss.
 /// Mehr als einen Tag entfernt stehen Wochentag und Uhrzeit da.
 struct ResetText: View {
     let date: Date?
@@ -224,7 +226,7 @@ struct ResetText: View {
             if date <= now {
                 Text("gerade zurückgesetzt")
             } else if date.timeIntervalSince(now) < 24 * 3600 {
-                Text(prefix) + Text(date, style: .relative)
+                Text(prefix) + Text(date, style: .timer)
             } else {
                 Text("neu ") + Text(date, format: .dateTime.weekday(.abbreviated).hour().minute())
             }
@@ -259,6 +261,30 @@ struct StaleNote: View {
         .font(.system(size: 9.5))
         .foregroundStyle(.secondary)
         .lineLimit(1)
+    }
+}
+
+/// Wie frisch die Zahlen sind: „aktualisiert vor 4:12“, zählt jede Sekunde mit. Ist der Stand
+/// zu alt, steht stattdessen die Uhrzeit des letzten Abrufs da.
+struct FreshnessNote: View {
+    let entry: UsageEntry
+    let updatedAt: Date
+
+    var body: some View {
+        if entry.isStale {
+            StaleNote(updatedAt: updatedAt)
+        } else {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Brand.allow)
+                    .frame(width: 5, height: 5)
+                (Text("aktualisiert vor ") + Text(updatedAt, style: .timer))
+                    .monospacedDigit()
+            }
+            .font(.system(size: 9.5))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
     }
 }
 
