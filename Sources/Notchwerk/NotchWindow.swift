@@ -181,7 +181,8 @@ final class NotchController {
         let offset = entries[index].grabOffset ?? .zero
         let target = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
         let e = entries[index]
-        let placed = e.state.geometry.floatingPlacement(center: target, tile: Layout.idleTile(prefs), on: e.screen)
+        let placed = e.state.geometry.floatingPlacement(center: target, tile: Layout.idleTile(prefs), on: e.screen,
+                                                        rubberBand: true)
         entries[index].floatingCenter = placed.center
         if e.state.anchor != placed.anchor { e.state.anchor = placed.anchor }
         e.panel.setFrame(placed.frame, display: true)
@@ -191,6 +192,20 @@ final class NotchController {
         guard entries.indices.contains(index) else { return }
         entries[index].grabOffset = nil
         prefs.floatingPosition = entries[index].floatingCenter
+        // Über den Rand hinaus gezogen: zurück an die erlaubte Stelle federn.
+        let e = entries[index]
+        let rest = e.state.geometry.floatingPlacement(center: e.floatingCenter, tile: Layout.idleTile(prefs), on: e.screen).frame
+        guard rest != e.panel.frame else { return }
+        if Theme.reduceMotion {
+            e.panel.setFrame(rest, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.35
+            // Weich auslaufend, ohne Überschwingen, wie eine kritisch gedämpfte Feder.
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+            e.panel.animator().setFrame(rest, display: true)
+        }
     }
 
     // MARK: - Maus

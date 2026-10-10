@@ -155,6 +155,7 @@ struct SingleLimitView: View {
                     Text("\(window.remainingPercent) % frei")
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .monospacedDigit()
+                        .numericTransition(Double(window.remainingPercent))
                     Text("\(Int(window.percent.rounded())) % genutzt")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -198,27 +199,40 @@ struct SingleLimitView: View {
         FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
     }
 
-    /// Mehrere Konten untereinander: der Name als Überschrift, rechts die Prozent, darunter ein Balken.
+    /// Mehrere Konten untereinander: der Name groß, rechts die Prozent, darunter ein kräftiger Balken.
+    /// Die Balken wachsen mit dem Platz, so füllt der Inhalt das Widget, ohne gedrängt zu wirken.
+    /// Ist der Stand veraltet, steht oben rechts die Uhrzeit des letzten Abrufs.
     private func several(_ accounts: [WidgetFeed.Account], feed: WidgetFeed) -> some View {
         let small = family == .systemSmall
         let showsReset = accounts.count <= 2
-        return VStack(alignment: .leading, spacing: small ? 8 : 10) {
+        let crowded = accounts.count > 2
+        return VStack(alignment: .leading, spacing: 6) {
             WidgetHeader(title: small ? limit.title : limit.longTitle)
+                .overlay(alignment: .trailing) {
+                    if entry.isStale {
+                        LiveBadge(updatedAt: feed.updatedAt, isStale: true)
+                    }
+                }
+                // Etwas Abstand zur runden Ecke oben links.
+                .padding(.top, 2)
             ForEach(accounts) { account in
                 let window = account.window(limit, at: entry.date)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(account.name)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Brand.orange)
+                            .font(.system(size: crowded ? 13 : 15, weight: .bold))
+                            .accentText()
                             .widgetAccentable()
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         Spacer(minLength: 4)
                         Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .font(.system(size: crowded ? 15 : 17, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .numericTransition(window?.percent)
                     }
-                    UsageBar(percent: window?.percent, height: small ? 9 : 10)
+                    UsageBar(percent: window?.percent, height: nil)
+                        .frame(minHeight: crowded ? 8 : 10, maxHeight: crowded ? 16 : 24)
                     if window == nil || showsReset {
                         Group {
                             if let window {
@@ -232,10 +246,10 @@ struct SingleLimitView: View {
                         .lineLimit(1)
                     }
                 }
+                .accessibilityElement(children: .combine)
             }
-            Spacer(minLength: 0)
-            FreshnessNote(entry: entry, updatedAt: feed.updatedAt)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -262,11 +276,10 @@ struct OverviewView: View {
     private func small(_ feed: WidgetFeed) -> some View {
         let accounts = Array(feed.accounts.prefix(2))
         let several = accounts.count > 1
-        let diameter: CGFloat = limits.count > 2 ? (several ? 32 : 38) : (several ? 40 : 52)
-        return VStack(alignment: .leading, spacing: several ? 8 : 6) {
+        return VStack(spacing: several ? 6 : 4) {
             ForEach(accounts) { account in
                 AccountRings(title: several ? account.name : "Claude", account: account, limits: limits,
-                             date: entry.date, diameter: diameter, showsReset: !several,
+                             date: entry.date, showsReset: !several,
                              live: account.id == accounts.first?.id && entry.isStale ? (feed.updatedAt, true) : nil)
             }
         }
@@ -314,10 +327,10 @@ struct OverviewView: View {
         } else {
             // Je Konto eine Spalte: Name, Ringe und darunter, wann sie wieder frei sind.
             let accounts = Array(feed.accounts.prefix(2))
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: 24) {
                 ForEach(accounts) { account in
                     AccountRings(title: account.name, account: account, limits: limits, date: entry.date,
-                                 diameter: limits.count > 2 ? 40 : 50, showsReset: true,
+                                 showsReset: true,
                                  live: account.id == accounts.first?.id && entry.isStale ? (feed.updatedAt, true) : nil)
                 }
             }
@@ -383,6 +396,7 @@ struct OverviewView: View {
             .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -443,6 +457,7 @@ struct AccountsView: View {
                 Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .numericTransition(window?.percent)
                     .lineLimit(1)
             }
             if showsReset, let window {
@@ -452,5 +467,6 @@ struct AccountsView: View {
                     .lineLimit(1)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 }

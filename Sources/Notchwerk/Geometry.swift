@@ -85,19 +85,32 @@ struct ScreenGeometry: Equatable {
 
     /// Fensterrahmen für den schwebenden Reiter: Die Kachel sitzt an `center`, der Inhalt klappt
     /// zur Bildschirmmitte hin auf. `center` wird so begrenzt, dass die Kachel sichtbar bleibt.
+    /// Mit `rubberBand` stoppt sie am Rand nicht hart, sondern lässt sich mit wachsendem Widerstand
+    /// ein Stück darüber hinaus ziehen. `center` im Ergebnis ist immer die begrenzte Stelle.
     @MainActor
-    func floatingPlacement(center: CGPoint, tile: CGSize, on screen: NSScreen) -> (frame: NSRect, anchor: Anchor, center: CGPoint) {
+    func floatingPlacement(center: CGPoint, tile: CGSize, on screen: NSScreen,
+                           rubberBand: Bool = false) -> (frame: NSRect, anchor: Anchor, center: CGPoint) {
         let size = panelSize
         let area = screen.visibleFrame
         var c = center
         c.x = min(max(c.x, area.minX + tile.width / 2), area.maxX - tile.width / 2)
         c.y = min(max(c.y, area.minY + tile.height / 2), area.maxY - tile.height / 2)
+        var shown = c
+        if rubberBand {
+            shown.x += Self.rubberBand(center.x - c.x, dimension: tile.width)
+            shown.y += Self.rubberBand(center.y - c.y, dimension: tile.height)
+        }
         let left = c.x > area.midX     // Inhalt nach links aufklappen
         let down = c.y > area.midY     // Inhalt nach unten aufklappen
-        let x = left ? c.x + tile.width / 2 - size.width : c.x - tile.width / 2
-        let y = down ? c.y + tile.height / 2 - size.height : c.y - tile.height / 2
+        let x = left ? shown.x + tile.width / 2 - size.width : shown.x - tile.width / 2
+        let y = down ? shown.y + tile.height / 2 - size.height : shown.y - tile.height / 2
         let anchor: Anchor = down ? (left ? .topTrailing : .topLeading) : (left ? .bottomTrailing : .bottomLeading)
         return (NSRect(x: x, y: y, width: size.width, height: size.height), anchor, c)
+    }
+
+    /// Je weiter über den Rand hinaus, desto weniger folgt die Kachel. Höchstens um `dimension`.
+    static func rubberBand(_ overshoot: CGFloat, dimension: CGFloat, constant: CGFloat = 0.55) -> CGFloat {
+        overshoot * dimension * constant / (dimension + constant * abs(overshoot))
     }
 
     @MainActor

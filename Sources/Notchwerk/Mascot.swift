@@ -12,6 +12,8 @@ struct Mascot: View {
     /// Augen als Löcher statt dunkler Felder, wie im Logo. Für die Anzeige ohne Kasten,
     /// bei der das Maskottchen direkt auf dem Schreibtisch sitzt.
     var cutOutEyes = false
+    /// Mit „Bewegung reduzieren“ bleibt es am Boden, Blinzeln, Winken und Gehen bleiben.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: Self.frameInterval(mood))) { context in
@@ -28,7 +30,7 @@ struct Mascot: View {
                     ctx.fill(Path(r), with: .color(Theme.ink))
                 }
             }
-            .offset(y: -hop * size / CGFloat(ClaudeLogo.rows))
+            .offset(y: reduceMotion ? 0 : -hop * size / CGFloat(ClaudeLogo.rows))
         }
         .frame(width: size * ClaudeLogo.aspect, height: size)
         .accessibilityHidden(true)
@@ -87,9 +89,19 @@ struct SparkSpinner: View {
     var active: Bool = true
     var size: CGFloat = 14
     var color: Color = Theme.orange
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if active {
+        if active && reduceMotion {
+            // Ohne Drehen: nur sanft heller und dunkler, damit man trotzdem sieht, dass etwas läuft.
+            TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                SparkShape()
+                    .fill(color)
+                    .opacity(0.65 + 0.35 * sin(t * 2.5))
+                    .frame(width: size, height: size)
+            }
+        } else if active {
             TimelineView(.animation) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 SparkShape()

@@ -61,20 +61,72 @@ extension WidgetFeed.Account {
     }
 }
 
+// MARK: - Farben
+
+/// Farben der Widgets, passend zum Erscheinungsbild und zu „Kontrast erhöhen“.
+enum Palette {
+    /// Orange für Schrift. Im Hellen dunkler, das Markenorange hätte auf Creme nur 3 : 1 Kontrast
+    /// (nötig sind 4,5 : 1), so sind es gut 5 : 1. Im Dunklen bleibt es das Markenorange.
+    static func accent(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Brand.orange : Color(red: 0.690, green: 0.290, blue: 0.165)  // #B04A2A
+    }
+
+    /// Füllung von Ring und Balken. Im Dunklen wird sie mit steigender Nutzung heller, im Hellen
+    /// dunkler. Beides hebt sie stärker hervor, und Hellorange wäre auf Creme kaum zu sehen (2,1 : 1).
+    static func usageTint(_ percent: Double, _ scheme: ColorScheme) -> Color {
+        guard scheme == .light else { return Brand.usageTint(percent) }
+        if percent >= 85 { return Brand.deny }
+        if percent >= 60 { return Brand.orangeDeep }
+        return Brand.orange
+    }
+
+    /// Spur unter Ring und Balken. Mit „Kontrast erhöhen“ deutlich kräftiger.
+    static func track(_ contrast: ColorSchemeContrast, base: Double = 0.1) -> Color {
+        Color.primary.opacity(contrast == .increased ? 0.3 : base)
+    }
+}
+
+/// Schrift in Orange, hell und dunkel jeweils gut lesbar.
+private struct AccentText: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(Palette.accent(scheme))
+    }
+}
+
+extension View {
+    func accentText() -> some View { modifier(AccentText()) }
+
+    /// Ab macOS 14 rollen Prozentzahlen beim Wechsel auf den neuen Wert, wie in Apples eigenen Widgets.
+    @ViewBuilder
+    func numericTransition(_ value: Double?) -> some View {
+        if #available(macOS 14.0, *), let value {
+            contentTransition(.numericText(value: value))
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - Hintergrund
 
 /// Hintergrund im Stil von Claude: warmes Creme im hellen, warmes Fast-Schwarz im dunklen
 /// Erscheinungsbild, oben links ein Hauch Orange.
 struct WidgetBackdrop: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         ZStack {
             scheme == .dark
                 ? Color(red: 0.125, green: 0.122, blue: 0.114)  // #201F1D
                 : Color(red: 0.980, green: 0.976, blue: 0.961)  // #FAF9F5
-            RadialGradient(colors: [Brand.orange.opacity(scheme == .dark ? 0.16 : 0.10), .clear],
-                           center: .topLeading, startRadius: 0, endRadius: 240)
+            // Mit „Kontrast erhöhen“ ein ruhiger, einfarbiger Grund.
+            if contrast != .increased {
+                RadialGradient(colors: [Brand.orange.opacity(scheme == .dark ? 0.16 : 0.10), .clear],
+                               center: .topLeading, startRadius: 0, endRadius: 240)
+            }
         }
     }
 }
@@ -125,15 +177,17 @@ struct UsageRing: View {
     var lineWidth: CGFloat = 8
     var labelSize: CGFloat = 20
     var showsLabel = true
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.primary.opacity(0.1), lineWidth: lineWidth)
+                .stroke(Palette.track(contrast), lineWidth: lineWidth)
             if let percent, percent > 0 {
                 Circle()
                     .trim(from: 0, to: CGFloat(min(percent, 100) / 100))
-                    .stroke(Brand.usageTint(percent), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .stroke(Palette.usageTint(percent, scheme), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .widgetAccentable()
             }
@@ -142,6 +196,7 @@ struct UsageRing: View {
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
                         Text("\(Int(percent.rounded()))")
                             .font(.system(size: labelSize, weight: .bold, design: .rounded))
+                            .numericTransition(percent)
                         Text("%")
                             .font(.system(size: labelSize * 0.5, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -159,27 +214,36 @@ struct UsageRing: View {
         }
         .padding(lineWidth / 2)
         .aspectRatio(1, contentMode: .fit)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Genutzt")
+        .accessibilityValue(percent.map { "\(Int($0.rounded())) Prozent" } ?? "keine Daten")
+        .accessibilityHidden(!showsLabel)
     }
 }
 
 /// Waagrechter Balken für die Übersichten.
 struct UsageBar: View {
     let percent: Double?
-    var height: CGFloat = 6
+    /// Ohne Höhe füllt der Balken den Platz, den man ihm gibt (z.B. mit frame(minHeight:maxHeight:)).
+    var height: CGFloat? = 6
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.1))
+                Capsule().fill(Palette.track(contrast))
                 if let percent, percent > 0 {
                     Capsule()
-                        .fill(Brand.usageTint(percent))
-                        .frame(width: max(height, geo.size.width * CGFloat(min(percent, 100) / 100)))
+                        .fill(Palette.usageTint(percent, scheme))
+                        .frame(width: max(geo.size.height, geo.size.width * CGFloat(min(percent, 100) / 100)))
                         .widgetAccentable()
                 }
             }
         }
         .frame(height: height)
+        // Die Zahl steht immer daneben, VoiceOver liest sie dort.
+        .accessibilityHidden(true)
     }
 }
 
@@ -207,15 +271,46 @@ struct UsageBarRow: View {
                 Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
                     .font(.system(size: titleSize, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .numericTransition(window?.percent)
                     .lineLimit(1)
             }
             UsageBar(percent: window?.percent)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
-/// „neu in 2:13:45“: zählt jede Sekunde herunter, ohne dass das Widget neu laden muss.
-/// Mehr als einen Tag entfernt stehen Wochentag und Uhrzeit da.
+// MARK: - Zeiten
+
+/// Restzeit in ganzen Minuten, aufgerundet: Solange das Limit noch nicht frei ist, steht nie „0 Min.“ da.
+private func minutesLeft(until date: Date, from now: Date) -> Int {
+    max(1, Int((date.timeIntervalSince(now) / 60).rounded(.up)))
+}
+
+/// „2 Std. 27 Min.“, unter einer Stunde „27 Min.“. Ohne Sekunden: Das Widget bekommt jede Minute
+/// einen neuen Eintrag (siehe UsageProvider), so bleibt die Angabe aktuell.
+func durationText(until date: Date, from now: Date) -> String {
+    let minutes = minutesLeft(until: date, from: now)
+    let h = minutes / 60, m = minutes % 60
+    if h == 0 { return "\(m) Min." }
+    return m == 0 ? "\(h) Std." : "\(h) Std. \(m) Min."
+}
+
+/// Kurz für unter einem Ring: „2:27 h“, unter einer Stunde „27 Min.“.
+func shortDurationText(until date: Date, from now: Date) -> String {
+    let minutes = minutesLeft(until: date, from: now)
+    let h = minutes / 60, m = minutes % 60
+    if h == 0 { return "\(m) Min." }
+    return "\(h):" + (m < 10 ? "0\(m)" : "\(m)") + " h"
+}
+
+/// Seit wann die Zahlen da sind, in ganzen Minuten.
+func ageText(since date: Date, now: Date) -> String {
+    let minutes = Int(now.timeIntervalSince(date) / 60)
+    return minutes < 1 ? "gerade eben" : "vor \(minutes) Min."
+}
+
+/// „neu in 2 Std. 27 Min.“. Mehr als einen Tag entfernt stehen Wochentag und Uhrzeit da.
 struct ResetText: View {
     let date: Date?
     let now: Date
@@ -226,7 +321,7 @@ struct ResetText: View {
             if date <= now {
                 Text("gerade zurückgesetzt")
             } else if date.timeIntervalSince(now) < 24 * 3600 {
-                Text(prefix) + Text(date, style: .timer)
+                Text(prefix + durationText(until: date, from: now))
             } else {
                 Text("neu ") + Text(date, format: .dateTime.weekday(.abbreviated).hour().minute())
             }
@@ -264,8 +359,8 @@ struct StaleNote: View {
     }
 }
 
-/// Wie frisch die Zahlen sind: „aktualisiert vor 4:12“, zählt jede Sekunde mit. Ist der Stand
-/// zu alt, steht stattdessen die Uhrzeit des letzten Abrufs da.
+/// Wie frisch die Zahlen sind: „aktualisiert vor 4 Min.“. Ist der Stand zu alt, steht stattdessen
+/// die Uhrzeit des letzten Abrufs da.
 struct FreshnessNote: View {
     let entry: UsageEntry
     let updatedAt: Date
@@ -278,8 +373,7 @@ struct FreshnessNote: View {
                 Circle()
                     .fill(Brand.allow)
                     .frame(width: 5, height: 5)
-                (Text("aktualisiert vor ") + Text(updatedAt, style: .timer))
-                    .monospacedDigit()
+                Text("aktualisiert " + ageText(since: updatedAt, now: entry.date))
             }
             .font(.system(size: 9.5))
             .foregroundStyle(.secondary)
@@ -324,7 +418,7 @@ struct AccountSection: View {
             HStack(spacing: 6) {
                 Text(account.name)
                     .font(.system(size: style == .roomy ? 13 : 12, weight: .semibold))
-                    .foregroundStyle(Brand.orange)
+                    .accentText()
                     .widgetAccentable()
                     .lineLimit(1)
                 Spacer(minLength: 4)
@@ -348,7 +442,7 @@ struct AccountSection: View {
     }
 }
 
-/// Klein und unaufdringlich: grüner Punkt und „0:34“, zählt jede Sekunde hoch.
+/// Klein und unaufdringlich: grüner Punkt und wie alt die Zahlen sind.
 /// Ist der Stand alt, stattdessen eine Uhr und die Uhrzeit des letzten Abrufs.
 struct LiveBadge: View {
     let updatedAt: Date
@@ -360,12 +454,8 @@ struct LiveBadge: View {
                 Image(systemName: "clock")
                 Text(updatedAt, format: .dateTime.hour().minute())
             } else {
-                // Ein Text, damit der Punkt am Zähler klebt: Zeit-Texte nehmen sonst die volle Breite ein.
                 (Text("●").font(.system(size: 6)).foregroundColor(Brand.allow) + Text(" ")
-                    + Text(updatedAt, style: .timer))
-                    .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 52, alignment: .trailing)
+                    + Text(ageText(since: updatedAt, now: Date())))
             }
         }
         .font(.system(size: 9))
@@ -409,6 +499,7 @@ struct LimitLine: View {
                 Text(window.map { "\(Int($0.percent.rounded())) %" } ?? "–")
                     .font(.system(size: percentSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
+                    .numericTransition(window?.percent)
                     .lineLimit(1)
                     .frame(width: style == .roomy ? 40 : 32, alignment: .trailing)
                 if style == .wide {
@@ -421,6 +512,7 @@ struct LimitLine: View {
                     .padding(.leading, 56)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -459,16 +551,18 @@ struct LimitRing: View {
     let limit: LimitSpec
     let window: WidgetFeed.Window?
     let diameter: CGFloat
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         let line = max(3, diameter * 0.09)
         ZStack {
             Circle()
-                .stroke(Color.primary.opacity(0.12), lineWidth: line)
+                .stroke(Palette.track(contrast, base: 0.12), lineWidth: line)
             if let percent = window?.percent, percent > 0 {
                 Circle()
                     .trim(from: 0, to: CGFloat(min(percent, 100) / 100))
-                    .stroke(Brand.usageTint(percent), style: StrokeStyle(lineWidth: line, lineCap: .round))
+                    .stroke(Palette.usageTint(percent, scheme), style: StrokeStyle(lineWidth: line, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .widgetAccentable()
             }
@@ -484,7 +578,7 @@ struct LimitRing: View {
     }
 }
 
-/// Unter einem Ring: wann das Limit wieder frei ist, kurz („2:12:59“ zählt live, sonst „Di. 10:13“).
+/// Unter einem Ring: wann das Limit wieder frei ist, kurz („2:12 h“, mehr als einen Tag entfernt „Di. 10:13“).
 struct ResetShort: View {
     let window: WidgetFeed.Window?
     let date: Date
@@ -495,7 +589,7 @@ struct ResetShort: View {
                 if reset <= date {
                     Text("frei")
                 } else if reset.timeIntervalSince(date) < 24 * 3600 {
-                    Text(reset, style: .timer)
+                    Text(shortDurationText(until: reset, from: date))
                 } else {
                     Text(reset, format: .dateTime.weekday(.abbreviated).hour().minute())
                 }
@@ -512,44 +606,57 @@ struct ResetShort: View {
     }
 }
 
-/// Ein Konto: Überschrift (bei mehreren Konten der Name, sonst „Claude“), darunter die Ringe nebeneinander.
+/// Ein Konto: Überschrift (bei mehreren Konten der Name, sonst „Claude“) mittig über den Ringen.
+/// Die Ringe werden so groß, wie der Platz erlaubt, höchstens `maxDiameter`. Name und Ringe bleiben
+/// als Block zusammen und stehen mittig im verfügbaren Platz.
 struct AccountRings: View {
     let title: String
     let account: WidgetFeed.Account
     let limits: [LimitSpec]
     let date: Date
-    let diameter: CGFloat
+    var maxDiameter: CGFloat = 64
     var showsReset = false
     var live: (updatedAt: Date, isStale: Bool)?
 
+    /// Höhe der Überschrift samt Abstand, Höhe der Zeile „neu in …“ darunter.
+    private let titleHeight: CGFloat = 18
+    private let resetHeight: CGFloat = 14
+    private var gap: CGFloat { limits.count > 2 ? 6 : 10 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
+        GeometryReader { geo in
+            let count = CGFloat(max(1, limits.count))
+            let column = (geo.size.width - gap * (count - 1)) / count
+            let height = geo.size.height - titleHeight - (showsReset ? resetHeight : 0)
+            let diameter = max(16, min(column, height, maxDiameter))
+            VStack(spacing: 4) {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Brand.orange)
+                    .accentText()
                     .widgetAccentable()
                     .lineLimit(1)
-                Spacer(minLength: 2)
-                if let live {
-                    LiveBadge(updatedAt: live.updatedAt, isStale: live.isStale)
-                }
-            }
-            if let problem = account.problemText, account.windows.isEmpty {
-                ProblemNote(text: problem)
-                    .frame(height: diameter, alignment: .center)
-            } else {
-                HStack(spacing: 0) {
-                    ForEach(limits, id: \.self) { limit in
-                        let window = account.window(limit, at: date)
-                        VStack(spacing: 3) {
-                            LimitRing(limit: limit, window: window, diameter: diameter)
-                            if showsReset { ResetShort(window: window, date: date) }
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .trailing) {
+                        if let live {
+                            LiveBadge(updatedAt: live.updatedAt, isStale: live.isStale)
                         }
-                        .frame(maxWidth: .infinity)
+                    }
+                if let problem = account.problemText, account.windows.isEmpty {
+                    ProblemNote(text: problem)
+                        .frame(height: diameter)
+                } else {
+                    HStack(spacing: gap) {
+                        ForEach(limits, id: \.self) { limit in
+                            let window = account.window(limit, at: date)
+                            VStack(spacing: 3) {
+                                LimitRing(limit: limit, window: window, diameter: diameter)
+                                if showsReset { ResetShort(window: window, date: date) }
+                            }
+                        }
                     }
                 }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 }

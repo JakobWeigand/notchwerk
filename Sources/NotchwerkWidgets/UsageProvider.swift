@@ -36,6 +36,10 @@ struct UsageProvider: TimelineProvider {
         let now = Date()
         let feed = WidgetFeedStore.read()
         var dates: Set<Date> = [now]
+        // Jede volle Minute ein Eintrag, damit „neu in 2 Std. 27 Min.“ ohne Sekundenzähler aktuell bleibt.
+        // Eine Stunde reicht: Notchwerk lädt nach jedem Abruf neu, spätestens nach 30 Minuten das System.
+        let minute = (now.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60
+        for i in 1...60 { dates.insert(Date(timeIntervalSinceReferenceDate: minute + Double(i) * 60)) }
         if let feed {
             let horizon = now.addingTimeInterval(24 * 3600)
             for account in feed.accounts {

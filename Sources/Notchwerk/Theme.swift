@@ -15,6 +15,29 @@ enum Theme {
 
     static let nsOrange = NSColor(red: 0.851, green: 0.467, blue: 0.341, alpha: 1)
 
-    static let spring = Animation.spring(response: 0.42, dampingFraction: 0.74)
-    static let softSpring = Animation.spring(response: 0.55, dampingFraction: 0.86)
+    /// Bewegung nach Apples Vorbild (siehe Projekte/Design/apple-design): Federn statt fester Dauer,
+    /// standardmäßig ohne Nachschwingen. Federn starten vom aktuellen Wert und lassen sich jederzeit
+    /// umlenken. Ist in den Bedienungshilfen „Bewegung reduzieren“ an, wird nur kurz überblendet.
+    static var spring: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 1)
+    }
+    static var softSpring: Animation {
+        reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.5, dampingFraction: 1)
+    }
+
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+}
+
+/// Reagiert schon beim Drücken, nicht erst beim Loslassen: kurz etwas kleiner, beim Loslassen
+/// federt es zurück. Mit „Bewegung reduzieren“ wird nur abgedunkelt.
+struct PressStyle: ButtonStyle {
+    var scale: CGFloat = 0.96
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        configuration.label
+            .scaleEffect(pressed && !Theme.reduceMotion ? scale : 1)
+            .opacity(pressed && Theme.reduceMotion ? 0.75 : 1)
+            .animation(pressed ? .easeOut(duration: 0.08) : Theme.spring, value: pressed)
+    }
 }

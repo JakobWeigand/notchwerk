@@ -90,13 +90,10 @@ private struct NotchBody: View {
     var body: some View {
         ZStack(alignment: anchor.flipped ? .bottom : .top) {
             background
-            if bareLogo {
-                // Nicht zuschneiden, sonst stößt das Maskottchen beim Hüpfen oben an.
-                content
-            } else {
-                content
-                    .clipShape(clipShape)
-            }
+            // Immer dieselbe Ansicht, nur die Form wechselt. Mit if/else entstünde beim Aufklappen eine
+            // neue Ansicht, die sofort in voller Größe erscheint, noch bevor der Kasten aufgegangen ist.
+            content
+                .clipShape(clipShape)
         }
         .contentShape(fillShape)
         .onTapGesture(perform: onTap)
@@ -111,21 +108,27 @@ private struct NotchBody: View {
 
     // MARK: Hintergrund und Rand
 
+    /// Mit „Bewegung reduzieren“ pulsiert der Rand nicht, er leuchtet gleichmäßig.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @ViewBuilder
     private var background: some View {
         let rimVisible = presentation != .hidden && !bareLogo
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(attention || model.isWorking))) { ctx in
+        let pulsing = (attention || model.isWorking) && !reduceMotion
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !pulsing)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
-            let pulse = attention ? 0.5 + 0.5 * sin(t * 4.2) : (model.isWorking ? 0.5 + 0.5 * sin(t * 2.2) : 0.35)
+            let pulse = !pulsing ? (attention ? 1 : model.isWorking ? 0.6 : 0.35)
+                : attention ? 0.5 + 0.5 * sin(t * 4.2) : 0.5 + 0.5 * sin(t * 2.2)
             let glow = rimVisible ? (open ? 0.55 : 0.35) + 0.45 * pulse : 0
             ZStack {
-                fillShape.fill(Color.black.opacity(bareLogo ? 0 : 1))
+                fillShape.fill(Color.black)
                 strokeShape
                     .stroke(Theme.orange.opacity(rimVisible ? 0.95 : 0),
                             style: StrokeStyle(lineWidth: open ? 1.6 : 1.4, lineCap: .round, lineJoin: .round))
                     .shadow(color: Theme.orange.opacity(glow), radius: attention ? 9 : 5)
                     .shadow(color: Theme.orangeBright.opacity(glow * 0.5), radius: 2)
             }
+            .modifier(EarlyFade(progress: bareLogo ? 0 : 1))
         }
     }
 
@@ -145,7 +148,10 @@ private struct NotchBody: View {
             : AnyShape(NotchShape(topRadius: topRadius, bottomRadius: bottomRadius, openTop: true))
     }
 
-    private var clipShape: AnyShape { fillShape }
+    /// Ohne Kasten großzügig, sonst stößt das Maskottchen beim Hüpfen oben an.
+    private var clipShape: AnyShape {
+        bareLogo ? AnyShape(Rectangle().inset(by: -40)) : fillShape
+    }
 
     // MARK: Inhalt
 
@@ -164,21 +170,41 @@ private struct NotchBody: View {
                     .padding(.horizontal, side - 6)
                     .padding(.top, 4)
                     .padding(.bottom, 10)
-                    .transition(.opacity.animation(.easeOut(duration: 0.15)))
+                    .transition(contentTransition)
             } else if expanded {
                 expandedContent
                     .padding(.horizontal, side)
                     .padding(.top, headerless ? 10 : 6)
                     .padding(.bottom, 12)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.92, anchor: .top)).animation(Theme.spring.delay(0.06)),
-                        removal: .opacity.animation(.easeOut(duration: 0.12))))
+                    .transition(contentTransition)
             }
             if anchor.flipped && !headerless {
                 headerArea
             } else {
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    /// Der Inhalt wächst aus der Stelle, an der die Anzeige hängt, und verschwindet auf demselben
+    /// Weg wieder. Hinaus etwas schneller, damit er nicht unter dem schrumpfenden Rand zerquetscht wird.
+    private var contentTransition: AnyTransition {
+        let reveal = AnyTransition.modifier(active: LateFade(progress: 0), identity: LateFade(progress: 1))
+        let path: AnyTransition = Theme.reduceMotion
+            ? reveal
+            : reveal.combined(with: .scale(scale: 0.94, anchor: growAnchor))
+        return .asymmetric(insertion: path.animation(Theme.spring),
+                           removal: path.animation(.easeOut(duration: 0.15)))
+    }
+
+    /// Ursprung der Bewegung: am Notch oben mittig, als Kachel die Ecke, an der sie hängt.
+    private var growAnchor: UnitPoint {
+        guard corner else { return .top }
+        switch anchor {
+        case .topTrailing: return .topTrailing
+        case .topLeading: return .topLeading
+        case .bottomTrailing: return .bottomTrailing
+        case .bottomLeading: return .bottomLeading
         }
     }
 
@@ -303,6 +329,36 @@ private struct NotchBody: View {
     }
 }
 
+// MARK: - Reihenfolge beim Auf- und Zuklappen
+
+/// Der schwarze Kasten ist schon nach dem ersten Drittel der Bewegung voll da und verschwindet
+/// beim Zuklappen erst im letzten Drittel. So steht nie Inhalt auf halb durchsichtigem Grund.
+private struct EarlyFade: ViewModifier, Animatable {
+    var progress: Double
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.opacity(min(1, progress * 3))
+    }
+}
+
+/// Gegenstück für den Inhalt: Er erscheint erst, wenn der Kasten schon steht, und ist beim
+/// Zuklappen als Erstes weg.
+private struct LateFade: ViewModifier, Animatable {
+    var progress: Double
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.opacity(max(0, (progress - 0.4) / 0.6))
+    }
+}
+
 // MARK: - Teilansichten
 
 private struct BannerView: View {
@@ -391,7 +447,7 @@ private struct SessionListView: View {
                         .background(Circle().fill(Color.white.opacity(0.08)))
                         .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressStyle(scale: 0.88))
                 .help("Einstellungen")
                 Text(active.isEmpty
                      ? (model.claudeAppRunning ? "App geöffnet" : "Bereit")
@@ -415,7 +471,7 @@ private struct SessionListView: View {
                             .background(Circle().fill(Color.white.opacity(0.08)))
                             .contentShape(Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressStyle(scale: 0.88))
                 }
             }
             .frame(height: Layout.listHeader)
@@ -565,6 +621,13 @@ private struct SessionRow: View {
     @State private var hover = false
 
     var body: some View {
+        Button(action: action) { content }
+            .buttonStyle(RowStyle(hover: hover))
+            .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+            .help(session.cwd)
+    }
+
+    private var content: some View {
         HStack(spacing: 8) {
             statusIcon
                 .frame(width: 14)
@@ -606,11 +669,21 @@ private struct SessionRow: View {
         }
         .padding(.horizontal, 8)
         .frame(height: Layout.rowHeight)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(hover ? 0.09 : 0)))
         .contentShape(Rectangle())
-        .onTapGesture(perform: action)
-        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
-        .help(session.cwd)
+    }
+
+    /// Hervorhebung beim Überfahren, kräftiger und minimal kleiner schon beim Drücken.
+    private struct RowStyle: ButtonStyle {
+        let hover: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            let pressed = configuration.isPressed
+            configuration.label
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.white.opacity(pressed ? 0.15 : hover ? 0.09 : 0)))
+                .scaleEffect(pressed && !Theme.reduceMotion ? 0.985 : 1)
+                .animation(pressed ? .easeOut(duration: 0.08) : Theme.spring, value: pressed)
+        }
     }
 
     /// Kontoname, aber nur wenn es mehr als ein Konto gibt.
@@ -673,6 +746,7 @@ private struct RequestView: View {
                             .disabled(!armed).opacity(armed ? 1 : 0.5)
                     }
                 }
+                .animation(.easeOut(duration: 0.2), value: armed)
                 .task {
                     try? await Task.sleep(nanoseconds: 800_000_000)
                     armed = true
@@ -797,10 +871,9 @@ struct NotchButton: View {
                 .foregroundStyle(foreground)
                 .background(Capsule(style: .continuous).fill(background))
                 .overlay(Capsule(style: .continuous).stroke(border, lineWidth: 1))
-                .scaleEffect(hover ? 1.04 : 1)
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressStyle())
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
     }
 
