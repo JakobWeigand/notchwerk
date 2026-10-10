@@ -266,14 +266,18 @@ private struct NotchBody: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 Spacer(minLength: 0)
             } else {
-                SparkSpinner(active: model.isWorking || attention, size: 16,
-                             color: attention ? Theme.orangeBright : Theme.orange)
-                    .frame(width: 22)
-                Text(headline)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.cream)
-                    .lineLimit(1)
-                    .transition(.opacity)
+                // Ruhige Karten (fertig, Limit, Nachricht für später) haben Titel und Projekt selbst.
+                // Oben steht dann nur das Maskottchen, damit nichts doppelt dasteht.
+                if !calmCard {
+                    SparkSpinner(active: model.isWorking || attention, size: 16,
+                                 color: attention ? Theme.orangeBright : Theme.orange)
+                        .frame(width: 22)
+                    Text(headline)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.cream)
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
                 Spacer(minLength: 0)
                 Mascot(mood: mascotMood, size: 14)
                     .frame(width: 24)
@@ -282,15 +286,16 @@ private struct NotchBody: View {
         .padding(.horizontal, idle ? 0 : 14)
     }
 
+    /// Eine Karte, die nichts von dir braucht, ist gerade offen.
+    private var calmCard: Bool {
+        guard case .request = presentation, let req = model.currentRequest else { return false }
+        return !req.needsYou
+    }
+
     private var headline: String {
         if let req = model.currentRequest {
-            switch req.kind {
-            case .reply: return "Fertig · \(req.project)"
-            case .limit: return "Limit erreicht · \(req.project)"
-            case .compose: return "Nachricht für später"
-            case .question: return "Claude hat eine Frage"
-            default: return "Claude braucht dich"
-            }
+            if case .question = req.kind { return "Claude hat eine Frage" }
+            return "Claude braucht dich"
         }
         if let b = model.banner { return b.title }
         if case .sessions = presentation { return "Claude" }
