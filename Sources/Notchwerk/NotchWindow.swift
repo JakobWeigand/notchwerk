@@ -255,7 +255,8 @@ final class NotchController {
                 entries[i].outsideSince = nil
                 entries[i].holdOpenUntil = nil
                 if entries[i].insideSince == nil { entries[i].insideSince = now }
-                if !e.state.hovering, let since = entries[i].insideSince, now.timeIntervalSince(since) > 0.18 {
+                if !e.state.hovering, !e.state.closedByClick,
+                   let since = entries[i].insideSince, now.timeIntervalSince(since) > 0.18 {
                     e.state.hovering = true
                 }
             } else {
@@ -263,6 +264,10 @@ final class NotchController {
                 if entries[i].outsideSince == nil { entries[i].outsideSince = now }
                 if e.state.hovering, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 0.45 {
                     e.state.hovering = false
+                }
+                // Nach dem Schließen per Knopf wieder aufs Überfahren reagieren, sobald die Maus weg war.
+                if e.state.closedByClick, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 0.3 {
+                    e.state.closedByClick = false
                 }
                 // Planer: bleibt offen, solange du darin tippst. Hast du woanders hingeklickt (das Feld hat
                 // keinen Fokus mehr) und ist die Maus eine Weile weg, klappt er zu. Der Entwurf bleibt.

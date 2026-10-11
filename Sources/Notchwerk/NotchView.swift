@@ -5,6 +5,10 @@ import SwiftUI
 @MainActor
 final class PanelState: ObservableObject {
     @Published var hovering = false
+    /// Mit dem Schließen-Knopf zugeklappt, während die Maus noch auf der Anzeige steht. Solange das gilt,
+    /// klappt das Überfahren die Liste nicht gleich wieder auf (sonst wirkt der Knopf wie tot). Es endet,
+    /// sobald die Maus die Anzeige verlassen hat.
+    var closedByClick = false
     /// Per Klick aufgeklappt. Schließt sich wieder, wenn die Maus eine Weile weg ist.
     @Published var pinned = false
     /// „Später“ ist offen: der Planer steht an Stelle der Liste.
@@ -45,6 +49,13 @@ struct NotchRootView: View {
             NotchBody(model: model, prefs: prefs, presentation: p, geometry: g, pinned: panel.pinned, anchor: anchor,
                       draft: panel.draft,
                       onTap: { togglePinned(p) },
+                      onDismiss: {
+                          withAnimation(Theme.spring) {
+                              panel.pinned = false
+                              panel.hovering = false
+                              panel.closedByClick = true
+                          }
+                      },
                       onPlan: { withAnimation(Theme.spring) { panel.planning = true } },
                       onBack: {
                           // Zurück zur Liste. Die Maus ist gerade auf der Anzeige, also bleibt sie offen.
@@ -83,6 +94,8 @@ private struct NotchBody: View {
     let anchor: Anchor
     let draft: PlannerDraft
     let onTap: () -> Void
+    /// Schließen-Knopf der Liste.
+    let onDismiss: () -> Void
     let onPlan: () -> Void
     let onBack: () -> Void
     let onDragMoved: () -> Void
@@ -350,6 +363,8 @@ private struct NotchBody: View {
                             answer: { answer in model.answer(req.id, with: answer) },
                             replyDeadline: model.replying[req.id],
                             compose: { model.composeFollowUp(for: req.sessionId) },
+                            openChat: { model.continueInChat(sessionId: req.sessionId, requestID: req.id) },
+                            chatTargetName: model.takeoverName(for: req.sessionId),
                             startReply: { model.startReply(req.id) })
                 .id(req.id)
             }
@@ -375,7 +390,7 @@ private struct NotchBody: View {
                                     showsMascot: headerless,
                                     onDrag: headerless && geometry.style == .floating ? (onDragMoved, onDragEnded) : nil,
                                     onPlan: onPlan,
-                                    onClose: onTap)
+                                    onClose: onDismiss)
                         .transition(pageTransition(edge: .leading))
                 }
             }
@@ -858,6 +873,10 @@ private struct RequestView: View {
     let replyDeadline: Date?
     /// Nachricht für später schreiben (aus dem Limit-Hinweis).
     let compose: () -> Void
+    /// Im Chat weiterarbeiten, solange das Limit dieses Kontos erreicht ist.
+    let openChat: () -> Void
+    /// Mit welchem Konto der Chat weitermachen würde (nil: keins frei).
+    let chatTargetName: String?
     /// „Antworten …“ auf der Fertig-Meldung.
     let startReply: () -> Void
     /// Erlauben erst kurz nach dem Erscheinen, damit ein Klick, der eigentlich woanders hin
@@ -956,6 +975,10 @@ private struct RequestView: View {
                     Spacer()
                     if Preferences.shared.followUpsEnabled {
                         NotchButton("Nachricht für danach …", role: .secondary) { compose() }
+                    }
+                    if let name = chatTargetName {
+                        NotchButton("Weiter mit \(name)", role: .secondary, action: openChat)
+                            .help("Letzte Anfrage, die letzten Nachrichten und den Projektordner (nur lesen) an \(name) übergeben und im Chat weiterarbeiten, bis dieses Konto wieder dran ist")
                     }
                     NotchButton("Verstanden", role: .primary) { answer(.terminal) }
                 }

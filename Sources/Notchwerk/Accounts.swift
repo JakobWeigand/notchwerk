@@ -87,6 +87,13 @@ struct ClaudeAccount: Codable, Identifiable, Hashable {
     struct SignedIn: Equatable {
         let email: String
         let organization: String?
+
+        /// Die Organisation, wenn es eine echte ist. Ein persönliches Konto heißt bei Claude Code „<E-Mail>'s Organization“,
+        /// das ist keine Firma und soll auch nicht als eine angezeigt werden (und nicht die Adresse preisgeben).
+        var sharedOrganization: String? {
+            guard let organization, !organization.localizedCaseInsensitiveContains(email) else { return nil }
+            return organization
+        }
     }
 
     func signedIn() -> SignedIn? {

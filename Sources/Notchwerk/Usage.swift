@@ -392,6 +392,7 @@ final class UsageMonitor: ObservableObject {
             penalty[id] = nil
             blockedUntil[id] = nil
             usage[id] = AccountUsage(snapshot: snapshot, status: .ok)
+            LimitFile.shared.publish()
         } catch let error as FetchError {
             guard prefs.account(id: id) != nil else { return }
             var state = usage[id] ?? AccountUsage()

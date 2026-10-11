@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
+        ChatModel.shared.shutdown()
         KeepAwake.shared.stop()
         HookInstaller.cleanupRuntime()
     }
@@ -264,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(mi)
         }
         menu.addItem(.separator())
+        menu.addItem(item("Chat …", #selector(openChat)))
         menu.addItem(item("Prompt planen …", #selector(openPlanner)))
         menu.addItem(item("Einstellungen …", #selector(openSettings), key: ","))
         menu.addItem(toggle("Anzeige pausieren", !prefs.enabled, #selector(togglePause)))
@@ -408,6 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func noop() {}
     @objc private func openSettings() { SettingsWindowController.shared.show() }
     @objc private func openPlanner() { controller?.showPlanner() }
+    @objc private func openChat() { ChatWindowController.shared.show() }
     @objc private func togglePause() { prefs.enabled.toggle() }
     @objc private func playDemo() { model.runDemo() }
     @objc private func toggleRim() { prefs.alwaysShowRim.toggle() }

@@ -157,6 +157,16 @@ final class Preferences: ObservableObject {
     @Published var replyWindow: Int { didSet { defaults.set(replyWindow, forKey: "replyWindow") } }
     /// So viele Sekunden steht „Fertig“ oben, wenn Claude eine Antwort beendet hat.
     @Published var doneDisplaySeconds: Int { didSet { defaults.set(doneDisplaySeconds, forKey: "doneDisplaySeconds") } }
+    /// Chat: Ordner mit Unterlagen, den Claude nur lesen darf. Ohne Ordner ist es ein reiner Chat.
+    @Published var chatFolder: String? { didSet { defaults.set(chatFolder, forKey: "chatFolder") } }
+    /// Chat: Konto, das zuerst antwortet (nil: das Standardkonto).
+    @Published var chatAccountID: String? { didSet { defaults.set(chatAccountID, forKey: "chatAccountID") } }
+    /// Chat: Konten, die einspringen dürfen, wenn das gewählte sein Limit erreicht hat. Standard: keins,
+    /// denn dabei geht der Chat-Verlauf an ein anderes Konto (z.B. ein Firmenkonto).
+    @Published var chatReserveIDs: [String] { didSet { defaults.set(chatReserveIDs, forKey: "chatReserveIDs") } }
+    /// Chat: Erreicht eine Sitzung in Claude Code ihr Limit, übernimmt der Chat mit einem erlaubten Konto ihre
+    /// letzte Anfrage, den Verlauf und den Projektordner. Standard aus, denn dabei verlässt Text der Sitzung ihr Konto.
+    @Published var chatAutoTakeover: Bool { didSet { defaults.set(chatAutoTakeover, forKey: "chatAutoTakeover") } }
 
     static let mascotSizeRange: ClosedRange<Double> = 20...80
     /// Stufen fürs Menü. Klein ist die bisherige Größe.
@@ -237,6 +247,10 @@ final class Preferences: ObservableObject {
         replyWindow = Self.replyWindowChoices.contains(window) ? window : 60
         let shown = defaults.integer(forKey: "doneDisplaySeconds")
         doneDisplaySeconds = Self.doneDisplayChoices.contains(shown) ? shown : 5
+        chatFolder = defaults.string(forKey: "chatFolder").flatMap { $0.isEmpty ? nil : $0 }
+        chatAccountID = defaults.string(forKey: "chatAccountID").flatMap { $0.isEmpty ? nil : $0 }
+        chatReserveIDs = defaults.stringArray(forKey: "chatReserveIDs") ?? []
+        chatAutoTakeover = defaults.bool(forKey: "chatAutoTakeover")
     }
 
     static let doneDisplayChoices = [3, 5, 10, 20, 30]

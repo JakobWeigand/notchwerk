@@ -167,6 +167,8 @@ final class NotchModel: ObservableObject {
     /// Limit-Hinweise, die du mit „Verstanden“ weggeklickt hast: pro Konto, bis wann sie ruhig bleiben.
     /// Claude Code meldet ein Limit oft mehrmals (Wiederholungen, Subagents, mehrere Sitzungen).
     private var limitAcknowledged: [String: Date] = [:]
+    /// Wann der Chat eine Sitzung zuletzt automatisch übernommen hat.
+    private var takeovers: [String: Date] = [:]
     private var cancellables: Set<AnyCancellable> = []
     private let prefs = Preferences.shared
 
@@ -428,6 +430,9 @@ final class NotchModel: ObservableObject {
                 session.state = .idle
                 session.detail = "Limit erreicht"
                 sessions[sessionId] = session
+                LimitFile.shared.noteHookLimit(accountID: session.accountID, until: limitReset(for: session))
+                // Mit der automatischen Übernahme (erweitert, Standard aus) macht der Chat mit dem anderen Konto weiter.
+                if prefs.chatAutoTakeover, startTakeover(sessionId: sessionId, automatic: true) { break }
                 enqueueLimitNotice(session)
                 break
             }
@@ -745,7 +750,7 @@ final class NotchModel: ObservableObject {
     // MARK: - Limit und geplante Nachrichten
 
     /// Hinweis im Notch: Limit erreicht, und wann es sich zurücksetzt, falls die Nutzung bekannt ist.
-    private func enqueueLimitNotice(_ session: SessionInfo) {
+    fileprivate func enqueueLimitNotice(_ session: SessionInfo) {
         guard prefs.enabled else { return }
         let key = Self.limitKey(session)
         if let until = limitAcknowledged[key] {
@@ -782,6 +787,66 @@ final class NotchModel: ObservableObject {
         guard let id = session.accountID, let account = prefs.account(id: id),
               let snap = UsageMonitor.shared.state(for: account).snapshot else { return nil }
         return snap.windows.filter { $0.percent >= 99.5 }.compactMap(\.resetsAt).filter { $0 > Date() }.max()
+    }
+
+    /// Das Konto, mit dem der Chat eine Sitzung übernehmen würde (für die Beschriftung des Knopfs im Limit-Hinweis).
+    func takeoverName(for sessionId: String) -> String? {
+        guard let blocked = sessions[sessionId]?.accountID else { return nil }
+        return ChatModel.shared.takeoverTarget(excluding: blocked, requireReserve: false)?.name
+    }
+
+    /// Aus dem Limit-Hinweis: den Chat mit dem anderen Konto weitermachen lassen. Der Klick ist die Erlaubnis.
+    func continueInChat(sessionId: String, requestID: UUID) {
+        answer(requestID, with: .terminal)
+        if !startTakeover(sessionId: sessionId, automatic: false) {
+            let blocked = sessions[sessionId]?.accountID
+            let other = prefs.accounts.first { $0.id != blocked && $0.signedIn() != nil }
+            ChatWindowController.shared.show(preferring: other?.id)
+        }
+    }
+
+    /// Übernimmt eine Sitzung im Chat: letzte Anfrage, Verlauf und Projektordner gehen an ein anderes Konto.
+    /// Automatisch nur mit einem Konto, das du als Reserve erlaubt hast, und nicht öfter als alle 10 Minuten
+    /// je Sitzung. Gibt true zurück, wenn die Übernahme läuft (dann braucht es keinen Hinweis im Notch).
+    @discardableResult
+    private func startTakeover(sessionId: String, automatic: Bool) -> Bool {
+        guard prefs.enabled, let session = sessions[sessionId], let blockedID = session.accountID,
+              let path = session.transcriptPath else { return false }
+        if automatic, let last = takeovers[sessionId], Date().timeIntervalSince(last) < 600 { return true }
+        let chat = ChatModel.shared
+        guard !chat.isBusy, let target = chat.takeoverTarget(excluding: blockedID, requireReserve: automatic) else { return false }
+        takeovers[sessionId] = Date()
+
+        let blockedName = prefs.account(id: blockedID)?.name ?? "Konto"
+        let origin = session.origin.label.isEmpty ? "" : " (\(session.origin.label))"
+        let source = (session.title.map { "\(session.projectName) › \($0)" } ?? session.projectName) + origin
+        let reset = limitReset(for: session)
+        let folder = session.cwd
+        let targetID = target.id, targetName = target.name
+
+        Task.detached {
+            let excerpt = TranscriptExcerpt.read(path: path)
+            await MainActor.run {
+                // Eine Anfrage, die mit „/“ beginnt, ist ein Befehl an Claude Code (z.B. /compact), kein Text für den Chat.
+                guard let prompt = excerpt.prompt, !prompt.hasPrefix("/"),
+                      NotchModel.shared.prefs.enabled, !chat.isBusy else {
+                    if automatic { NotchModel.shared.enqueueLimitNotice(session) }
+                    return
+                }
+                let handoff = ChatHandoff(source: source, blockedAccountID: blockedID, blockedUntil: reset,
+                                          history: excerpt.history, prompt: prompt, folder: folder)
+                guard chat.takeOver(handoff, using: targetID) else {
+                    if automatic { NotchModel.shared.enqueueLimitNotice(session) }
+                    return
+                }
+                ChatWindowController.shared.show(activate: !automatic)
+                if automatic {
+                    NotchModel.shared.showBanner(Banner(style: .info, title: "\(blockedName) am Limit",
+                                                        subtitle: "\(targetName) antwortet im Chat weiter"), duration: 6)
+                }
+            }
+        }
+        return true
     }
 
     /// Feld zum Schreiben einer Nachricht öffnen, die Claude beim nächsten Ende der Sitzung bekommt.

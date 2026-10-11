@@ -103,6 +103,10 @@ struct SettingsView: View {
 
             AccountsSection(prefs: prefs, hookTick: $hookTick, errorText: $errorText)
 
+            ChatSection(prefs: prefs)
+
+            EditorSection(prefs: prefs)
+
             WidgetsSection(prefs: prefs)
 
             UpdatesSection(prefs: prefs)
@@ -427,6 +431,275 @@ private struct AccountRow: View {
     private func update(_ change: (inout ClaudeAccount) -> Void) {
         guard let i = prefs.accounts.firstIndex(where: { $0.id == account.id }) else { return }
         change(&prefs.accounts[i])
+    }
+}
+
+// MARK: - Chat
+
+/// Der Chat im eigenen Fenster und welche Konten dort einspringen dürfen, wenn das gewählte sein Limit erreicht hat.
+private struct ChatSection: View {
+    @ObservedObject var prefs: Preferences
+
+    var body: some View {
+        Section {
+            Text("Der Chat (Menü › Chat …) beantwortet Fragen mit Claude Code im Hintergrund, mit dem Konto, das du im Chat wählst. Claude darf nur in dem Ordner lesen, den du dort wählst. Es ändert nichts und führt keine Befehle aus. Notchwerk speichert den Chat nicht (nur Arbeitsspeicher), Claude Code legt aber wie im Terminal ein Protokoll im Ordner des antwortenden Kontos an.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if prefs.accounts.count > 1 {
+                ForEach(prefs.accounts) { account in
+                    Toggle("\(account.name) darf im Chat einspringen", isOn: Binding(
+                        get: { prefs.chatReserveIDs.contains(account.id) },
+                        set: { on in
+                            if on {
+                                if confirm(account) && !prefs.chatReserveIDs.contains(account.id) { prefs.chatReserveIDs.append(account.id) }
+                            } else {
+                                prefs.chatReserveIDs.removeAll { $0 == account.id }
+                            }
+                        }))
+                }
+                Text("Erreicht das Konto, das im Chat zuerst antwortet, sein Limit (Sitzung oder Woche), macht ein hier erlaubtes Konto weiter und bekommt den bisherigen Verlauf. Ohne Erlaubnis fragt der Chat jedes Mal nach.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Toggle("Bei erreichtem Limit einer Sitzung automatisch im Chat übernehmen", isOn: Binding(
+                    get: { prefs.chatAutoTakeover },
+                    set: { on in
+                        if on { if confirmTakeover() { prefs.chatAutoTakeover = true } } else { prefs.chatAutoTakeover = false }
+                    }))
+                    .disabled(prefs.chatReserveIDs.isEmpty)
+                Text(prefs.chatReserveIDs.isEmpty
+                     ? "Erst oben mindestens ein Konto als Reserve erlauben."
+                     : "Erreicht eine Sitzung in Claude Code (Terminal, VS Code, Positron) ihr Limit, öffnet sich der Chat im Hintergrund und antwortet auf die letzte Anfrage mit einem erlaubten Konto. Claude darf dabei den Projektordner nur lesen. Im Editor selbst geht das nicht: Dort bleibt die Sitzung an ihr Konto gebunden, bis sich das Limit zurücksetzt.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Mit einem zweiten Konto (siehe oben) kann der Chat bei einem erreichten Limit dort weitermachen.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Chat")
+        }
+    }
+
+    /// Die automatische Übernahme schickt Text aus einer Sitzung an ein anderes Konto. Das gibt es nur nach einer Bestätigung.
+    private func confirmTakeover() -> Bool {
+        let names = prefs.accounts.filter { prefs.chatReserveIDs.contains($0.id) }.map { "„\($0.name)“" }.joined(separator: " oder ")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Sitzungen bei einem Limit automatisch übernehmen?"
+        alert.informativeText = """
+        Erreicht eine Sitzung in Claude Code ihr Limit, liest Notchwerk aus dem Protokoll der Sitzung deine letzte Anfrage und die letzten Nachrichten (nur Text von dir und Claude, keine Werkzeugergebnisse) und schickt sie ohne Rückfrage an \(names). Dort darf Claude den Projektordner der Sitzung lesen, aber nichts ändern. Es zählt aufs Limit des anderen Kontos.
+
+        Das gilt für jede Sitzung auf jedem Konto, auch für Arbeit. Gehört ein Konto zu einer Firma, können Firmendaten auf dem privaten Konto landen oder private Inhalte beim Arbeitgeber. Notchwerk kann nicht erkennen, worum es in einer Sitzung geht.
+
+        Schutz: nur mit Konten, die du oben erlaubt hast; jede Antwort zeigt ihr Konto; nur lesen; höchstens einmal je 10 Minuten und Sitzung; jederzeit abschaltbar. Im Notch bleibt auf Wunsch der Knopf „Weiter mit …“, der erst auf deinen Klick übernimmt.
+        """
+        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: "Einschalten")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    /// Einschalten erst nach einer Bestätigung. „Abbrechen“ ist vorausgewählt, ein schnelles Enter schaltet nichts ein.
+    private func confirm(_ account: ClaudeAccount) -> Bool {
+        let organization = account.signedIn()?.sharedOrganization
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "„\(account.name)“ im Chat einspringen lassen?"
+        var text = "Hat das Konto, das im Chat zuerst antwortet, sein Limit erreicht, gehen deine Nachrichten und der bisherige Chat-Verlauf an „\(account.name)“ und zählen dort aufs Limit."
+        if let organization {
+            text += "\n\n„\(account.name)“ gehört zur Organisation „\(organization)“. Für Konten einer Organisation können deren Regeln und Einsichtsrechte gelten, auch dafür, wofür das Konto benutzt werden darf. Das kann Notchwerk nicht wissen, bitte prüfe es selbst."
+        }
+        text += "\n\nSchutz: Es gibt keinen Wechsel ohne deine Erlaubnis, jede Antwort zeigt, von welchem Konto sie kommt, und Claude darf nur lesen."
+        alert.informativeText = text
+        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: "Erlauben")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+}
+
+// MARK: - Editor (Positron, VS Code)
+
+/// Anleitung und Werkzeuge, damit ein Editor bei einem Limit auf ein anderes Konto ausweicht. Notchwerk legt
+/// nur das Start-Skript an und zeigt die Zeilen für die Einstellungen. Die Einstellungen der Editoren
+/// ändert es nie selbst.
+private struct EditorSection: View {
+    @ObservedObject var prefs: Preferences
+    @State private var primaryID = ClaudeAccount.defaultID
+    @State private var fallbackID = ""
+    @State private var seamless = false
+    @State private var status = EditorWrapper.status()
+    @State private var note: String?
+    @State private var copied = false
+
+    private var primary: ClaudeAccount? { prefs.account(id: primaryID) ?? prefs.accounts.first }
+    private var fallback: ClaudeAccount? {
+        prefs.accounts.first { $0.id == fallbackID && $0.id != primary?.id } ?? prefs.accounts.first { $0.id != primary?.id }
+    }
+
+    var body: some View {
+        Section {
+            Text("Positron und VS Code starten Claude Code fest mit einem Konto, und Claude Code kann das Konto nicht mitten in einer Sitzung wechseln. Mit einem Start-Skript von Notchwerk kann ein Editor bei einem Limit auf ein anderes Konto ausweichen. Notchwerk ändert die Einstellungen deiner Editoren nie selbst: Die Zeilen unten trägst du selbst ein.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if prefs.accounts.count < 2 {
+                Text("Dafür braucht es ein zweites Konto (siehe oben).")
+                    .font(.callout)
+            } else {
+                steps
+            }
+        } header: {
+            Text("Editor (Positron, VS Code)")
+        }
+        .onAppear {
+            status = EditorWrapper.status()
+            if fallbackID.isEmpty || fallbackID == primaryID { fallbackID = prefs.accounts.first { $0.id != primaryID }?.id ?? "" }
+        }
+    }
+
+    @ViewBuilder
+    private var steps: some View {
+        // Schritt 1: das Skript.
+        VStack(alignment: .leading, spacing: 6) {
+            Text("1. Start-Skript anlegen").font(.headline)
+            HStack {
+                switch status {
+                case .missing:
+                    Label("Noch nicht angelegt", systemImage: "circle.dashed").foregroundStyle(.secondary)
+                case .current:
+                    Label("Angelegt", systemImage: "checkmark.circle.fill").foregroundStyle(Color.green)
+                case .outdated:
+                    Label("Veraltet", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.orange)
+                }
+                Spacer()
+                Button(status == .missing ? "Skript anlegen" : "Neu schreiben") { install() }
+                    .help("Schreibt claude-wrapper und claude-wrapper.py nach ~/.claude-notch (nur für dich lesbar). Es ändert nichts an Positron oder VS Code.")
+                if status != .missing {
+                    Button("Entfernen …") { remove() }
+                }
+            }
+            if status != .missing {
+                Text(EditorWrapper.shellURL.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Text("Es braucht Python 3 (mit den Command Line Tools von Apple oder Homebrew dabei). Fehlt es, startet Claude Code im Editor unverändert.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let note {
+                Text(note).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+
+        // Schritt 2: Konten wählen.
+        VStack(alignment: .leading, spacing: 6) {
+            Text("2. Konten für diesen Editor wählen").font(.headline)
+            Picker("Der Editor nutzt", selection: $primaryID) {
+                ForEach(prefs.accounts) { Text($0.name).tag($0.id) }
+            }
+            .onChange(of: primaryID) { _ in
+                if fallbackID == primaryID { fallbackID = prefs.accounts.first { $0.id != primaryID }?.id ?? "" }
+            }
+            Picker("Bei Limit ausweichen auf", selection: $fallbackID) {
+                ForEach(prefs.accounts.filter { $0.id != primaryID }) { Text($0.name).tag($0.id) }
+            }
+            Toggle("Auch mitten in einer Unterhaltung wechseln (experimentell)", isOn: $seamless)
+            Text(seamless
+                 ? "Das Skript greift ein, wenn Claude Code mitten in der Unterhaltung meldet, dass das Limit erreicht ist: Es startet Claude Code mit dem anderen Konto neu, setzt die Sitzung fort und wiederholt die gescheiterte Nachricht. Du merkst nur, dass die Antwort trotzdem kommt. Experimentell: Es nutzt ein nicht dokumentiertes Protokoll zwischen Editor und Claude Code, getestet mit der Kommandozeile, nicht in allen Versionen der Erweiterung. Bei Problemen die Zeile NOTCHWERK_SEAMLESS entfernen."
+                 : "Das Skript wählt beim Start (neue Unterhaltung, Fenster neu laden) das Konto, das nicht am Limit ist. Nach einem Limit genügt also eine neue Unterhaltung oder „Reload Window“. Das Gespräch bleibt dabei erhalten, weil sein Protokoll zum anderen Konto kopiert wird. Den Limit-Stand teilt Notchwerk dafür über ~/.claude-notch/limits.json (nur Konto und Zeitpunkt).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        // Schritt 3: die Zeilen.
+        if let primary, let fallback {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("3. Zeilen in die Einstellungen des Editors eintragen").font(.headline)
+                let snippet = EditorWrapper.snippet(primary: primary, fallback: fallback, seamless: seamless)
+                Text(snippet)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.07)))
+                HStack {
+                    Button(copied ? "Kopiert ✓" : "Zeilen kopieren") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(snippet, forType: .string)
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                    }
+                    Spacer()
+                }
+                Text("""
+                So trägst du sie ein:
+                • In Positron oder VS Code ⇧⌘P drücken, dann „Open User Settings (JSON)“ wählen.
+                • Die Zeilen einfügen, zwischen zwei Einträgen mit Komma. Gibt es schon einen Eintrag „claudeCode.environmentVariables“ (z.B. mit CLAUDE_CONFIG_DIR), ersetze ihn oder ergänze die Einträge darin.
+                • Mit ⇧⌘P → „Developer: Reload Window“ neu laden.
+                • Rückgängig: die Zeilen wieder entfernen und neu laden. Erst danach das Skript hier entfernen.
+                """)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if primary.isDefault {
+                    Text("Beim Standardkonto fehlt CLAUDE_CONFIG_DIR mit Absicht: Claude Code fände sonst die Anmeldung nicht.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Mit einem Start-Skript fällt die Erweiterung beim Berechtigungsmodus auf „default“ (fragt nach) zurück, wenn du nichts anderes einstellst (laut Quelltext der Erweiterung 2.1.296). Passe bei Bedarf „claudeCode.initialPermissionMode“ an.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Was dabei passiert", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text(warning(primary: primary, fallback: fallback))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func warning(primary: ClaudeAccount, fallback: ClaudeAccount) -> String {
+        var text = "Beim Wechsel wird das komplette Sitzungsprotokoll (auch gelesene Dateiinhalte und Befehlsausgaben) in den Ordner von „\(fallback.name)“ kopiert und dort von Claude verarbeitet. Der Editor weicht nur von „\(primary.name)“ auf „\(fallback.name)“ aus, nicht umgekehrt. Die andere Richtung stellst du in den Einstellungen des anderen Editors ein."
+        let organizations = [primary, fallback].compactMap { account in
+            account.signedIn()?.sharedOrganization.map { "„\(account.name)“ gehört zur Organisation „\($0)“" }
+        }
+        if !organizations.isEmpty {
+            text += " " + organizations.joined(separator: ", ") + ". Für Konten einer Organisation können deren Regeln und Einsichtsrechte gelten, und Firmendaten dürfen womöglich nicht auf ein privates Konto. Notchwerk kann nicht erkennen, was in einer Sitzung steht."
+        }
+        return text
+    }
+
+    private func install() {
+        do {
+            try EditorWrapper.install()
+            LimitFile.shared.publish()
+            note = nil
+        } catch {
+            note = "Das Skript ließ sich nicht anlegen: \(error.localizedDescription)"
+        }
+        status = EditorWrapper.status()
+    }
+
+    /// Entfernen nur nach einer Bestätigung: Steht das Skript noch in den Einstellungen eines Editors, startet
+    /// Claude Code dort danach nicht mehr. „Abbrechen“ ist vorausgewählt.
+    private func remove() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Start-Skript entfernen?"
+        alert.informativeText = "Steht „claudeCode.claudeProcessWrapper“ noch in den Einstellungen von Positron oder VS Code, startet Claude Code dort danach nicht mehr. Entferne zuerst die Zeilen aus den Einstellungen der Editoren und lade sie neu."
+        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: "Entfernen")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        EditorWrapper.remove()
+        status = EditorWrapper.status()
     }
 }
 
