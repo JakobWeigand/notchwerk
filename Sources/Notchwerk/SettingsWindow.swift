@@ -656,22 +656,25 @@ private struct AdvancedSection: View {
                     }
 
                     RiskyToggle(
-                        title: "Nachrichten an Claude planen (z.B. nach dem Limit)",
+                        title: "Nachrichten und Prompts an Claude planen (z.B. nach dem Limit)",
                         isOn: Binding(get: { prefs.followUpsEnabled },
                                       set: { on in
                                           prefs.followUpsEnabled = on
-                                          if !on { FollowUps.shared.cancelAll() }
+                                          if !on { FollowUps.shared.cancelAll(); ScheduledPrompts.shared.cancelAll() }
                                       }),
                         risks: [
                             "Claude arbeitet weiter, während du nicht da bist, mit allem, was die Sitzung darf: „Immer erlauben“-Regeln und der Berechtigungsmodus gelten weiter. Fehler oder ungewollte Änderungen bemerkst du erst später.",
-                            "Wer an deinem entsperrten Mac sitzt, kann über den Notch eine Nachricht planen.",
+                            "Geplante Prompts öffnen zur gewählten Zeit selbst ein Terminal-Fenster und starten Claude Code darin, in einem neuen Chat oder als Fortsetzung eines alten. Bist du nicht da, läuft das ohne Aufsicht.",
+                            "Wer an deinem entsperrten Mac sitzt, kann über den Notch eine Nachricht oder einen Prompt planen.",
                         ],
                         safeguards: [
                             "Der Text geht nur als Anweisung an Claude Code (über den Stop-Hook), nie an ein Terminal oder eine Shell.",
                             "Zugestellt wird erst, wenn die Sitzung das nächste Mal fertig ist. Freigaben, nach denen Claude Code fragt, brauchen weiter deinen Klick.",
                             "Je Sitzung höchstens eine Nachricht, höchstens 4000 Zeichen, nur im Arbeitsspeicher, verfällt nach 24 Stunden, jederzeit löschbar.",
+                            "Geplante Prompts: höchstens 10, höchstens 7 Tage im Voraus, nur im Arbeitsspeicher. Wacht der Mac mehr als 30 Minuten zu spät auf, startet nichts.",
+                            "Der Prompt steht in einer eigenen Datei (nur für dich lesbar) und geht als ein Argument an claude, nie als Befehl an die Shell. Die Datei wird beim Start gelöscht. In ein offenes Fenster tippt Notchwerk nie.",
                         ],
-                        hint: "Planen über das Sprechblasen-Symbol neben einer Sitzung in der Liste oder über „Nachricht für danach“, wenn ein Limit erreicht ist. Claude Code macht nach dem Zurücksetzen des Limits von selbst weiter; danach bekommt Claude deine Nachricht.")
+                        hint: "Planen über „Später“ oben in der Liste (oder „Prompt planen …“ im Menü), über das Sprechblasen-Symbol neben einer Sitzung oder über „Nachricht für danach“, wenn ein Limit erreicht ist. Claude Code macht nach dem Zurücksetzen des Limits von selbst weiter; danach bekommt Claude deine Nachricht.")
 
                     RiskyToggle(
                         title: "Claude im Notch antworten",

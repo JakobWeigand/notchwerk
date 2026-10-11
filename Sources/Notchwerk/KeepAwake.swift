@@ -41,6 +41,7 @@ final class KeepAwake: ObservableObject {
         prefs.objectWillChange.sink { _ in changed() }.store(in: &cancellables)
         model.objectWillChange.sink { _ in changed() }.store(in: &cancellables)
         FollowUps.shared.objectWillChange.sink { _ in changed() }.store(in: &cancellables)
+        ScheduledPrompts.shared.objectWillChange.sink { _ in changed() }.store(in: &cancellables)
         // Limits und geplante Nachrichten verfallen mit der Zeit, ohne dass sich sonst etwas ändert.
         let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.update() }
@@ -57,7 +58,7 @@ final class KeepAwake: ObservableObject {
 
     /// Gibt es gerade etwas zu tun, für das der Mac wach bleiben soll?
     private var busy: Bool {
-        model.isWorking || model.hasLimitWait || FollowUps.shared.hasScheduled
+        model.isWorking || model.hasLimitWait || FollowUps.shared.hasScheduled || ScheduledPrompts.shared.hasScheduled
     }
 
     private func update() {

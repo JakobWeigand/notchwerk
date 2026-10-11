@@ -7,6 +7,10 @@ final class PanelState: ObservableObject {
     @Published var hovering = false
     /// Per Klick aufgeklappt. Schließt sich wieder, wenn die Maus eine Weile weg ist.
     @Published var pinned = false
+    /// „Später“ ist offen: der Planer steht an Stelle der Liste.
+    @Published var planning = false
+    /// Entwurf im Planer. Bleibt erhalten, wenn zwischendurch eine Freigabe kommt oder du zurückgehst.
+    let draft = PlannerDraft()
     @Published var geometry: ScreenGeometry
     /// Ecke, an der die Kachel hängt, und Richtung, in die der Inhalt aufklappt (schwebender Reiter).
     @Published var anchor: Anchor = .topTrailing
@@ -23,11 +27,14 @@ struct NotchRootView: View {
     @ObservedObject var model: NotchModel
     @ObservedObject var prefs: Preferences
     @ObservedObject var panel: PanelState
+    /// Die Höhe des Planers hängt an der Zahl geplanter Prompts.
+    @ObservedObject private var scheduler = ScheduledPrompts.shared
+    @ObservedObject private var followUps = FollowUps.shared
 
     var body: some View {
         let g = panel.geometry
         let p = Layout.presentation(model: model, prefs: prefs, geometry: g,
-                                    hovering: panel.hovering, pinned: panel.pinned)
+                                    hovering: panel.hovering, pinned: panel.pinned, planning: panel.planning)
         let size = Layout.size(for: p, model: model, prefs: prefs, geometry: g)
 
         let anchor: Anchor = g.style == .floating ? panel.anchor : .topTrailing
@@ -36,7 +43,16 @@ struct NotchRootView: View {
         ZStack(alignment: alignment) {
             Color.clear
             NotchBody(model: model, prefs: prefs, presentation: p, geometry: g, pinned: panel.pinned, anchor: anchor,
+                      draft: panel.draft,
                       onTap: { togglePinned(p) },
+                      onPlan: { withAnimation(Theme.spring) { panel.planning = true } },
+                      onBack: {
+                          // Zurück zur Liste. Die Maus ist gerade auf der Anzeige, also bleibt sie offen.
+                          withAnimation(Theme.spring) {
+                              panel.pinned = true
+                              panel.planning = false
+                          }
+                      },
                       onDragMoved: { panel.onDragMoved?() },
                       onDragEnded: { panel.onDragEnded?() })
             .frame(width: size.width, height: size.height)
@@ -51,7 +67,7 @@ struct NotchRootView: View {
     /// oder Einblendung passiert nichts, die haben ihre eigenen Knöpfe.
     private func togglePinned(_ p: Presentation) {
         switch p {
-        case .request, .banner: return
+        case .request, .banner, .planner: return
         default: withAnimation(Theme.spring) { panel.pinned.toggle() }
         }
     }
@@ -65,7 +81,10 @@ private struct NotchBody: View {
     let geometry: ScreenGeometry
     let pinned: Bool
     let anchor: Anchor
+    let draft: PlannerDraft
     let onTap: () -> Void
+    let onPlan: () -> Void
+    let onBack: () -> Void
     let onDragMoved: () -> Void
     let onDragEnded: () -> Void
 
@@ -85,7 +104,7 @@ private struct NotchBody: View {
         corner && (presentation == .rim || presentation == .hidden || (presentation == .compact && !showsRows))
     }
     /// Die Liste oben rechts und am Reiter kommt ohne Kopfzeile aus: „Claude“ steht in ihr selbst.
-    private var headerless: Bool { corner && presentation == .sessions }
+    private var headerless: Bool { corner && (presentation == .sessions || presentation == .planner) }
 
     var body: some View {
         ZStack(alignment: anchor.flipped ? .bottom : .top) {
@@ -197,6 +216,14 @@ private struct NotchBody: View {
                            removal: path.animation(.easeOut(duration: 0.15)))
     }
 
+    /// Seitenwechsel zwischen Liste und Planer: schiebt ein Stück und blendet dabei. Mit „Bewegung
+    /// reduzieren“ nur überblenden.
+    private func pageTransition(edge: Edge) -> AnyTransition {
+        guard !Theme.reduceMotion else { return .opacity }
+        let shift: CGFloat = edge == .trailing ? 60 : -60
+        return .offset(x: shift).combined(with: .opacity)
+    }
+
     /// Ursprung der Bewegung: am Notch oben mittig, als Kachel die Ecke, an der sie hängt.
     private var growAnchor: UnitPoint {
         guard corner else { return .top }
@@ -299,6 +326,7 @@ private struct NotchBody: View {
         }
         if let b = model.banner { return b.title }
         if case .sessions = presentation { return "Claude" }
+        if case .planner = presentation { return "Prompt für später" }
         let active = model.activeSessions
         if showsRows { return "\(active.count) aktive Sitzung\(active.count == 1 ? "" : "en")" }
         if let s = active.first { return s.detail.isEmpty ? s.displayName : "\(s.displayName) · \(s.detail)" }
@@ -331,14 +359,26 @@ private struct NotchBody: View {
                     .contentShape(Rectangle())
                     .onTapGesture { model.clearBanner() }
             }
-        case .sessions:
-            // Ohne Kopfzeile zieht man den Reiter an der Zeile mit „Claude“.
-            SessionListView(model: model, rows: prefs.listSize.rows, pinned: pinned,
-                            showUsage: prefs.showUsage,
-                            maxGauges: Layout.maxGauges(prefs: prefs, geometry: geometry),
-                            showsMascot: headerless,
-                            onDrag: headerless && geometry.style == .floating ? (onDragMoved, onDragEnded) : nil,
-                            onClose: onTap)
+        case .sessions, .planner:
+            // Liste und Planer teilen sich einen Zweig: Nur zwischen den beiden gibt es den Seitenwechsel.
+            // Übereinander, damit beim Wechsel nichts nach unten rutscht. Hinein und hinaus auf demselben Weg:
+            // der Planer von rechts, die Liste nach links und von dort zurück.
+            ZStack(alignment: .top) {
+                if presentation == .planner {
+                    PlannerView(draft: draft, model: model, showsMascot: headerless, onBack: onBack)
+                        .transition(pageTransition(edge: .trailing))
+                } else {
+                    // Ohne Kopfzeile zieht man den Reiter an der Zeile mit „Claude“.
+                    SessionListView(model: model, rows: prefs.listSize.rows, pinned: pinned,
+                                    showUsage: prefs.showUsage,
+                                    maxGauges: Layout.maxGauges(prefs: prefs, geometry: geometry),
+                                    showsMascot: headerless,
+                                    onDrag: headerless && geometry.style == .floating ? (onDragMoved, onDragEnded) : nil,
+                                    onPlan: onPlan,
+                                    onClose: onTap)
+                        .transition(pageTransition(edge: .leading))
+                }
+            }
         default:
             EmptyView()
         }
@@ -442,6 +482,8 @@ private struct SessionListView: View {
     var showsMascot = false
     /// Reiter an der Zeile mit „Claude“ verschieben.
     var onDrag: (moved: () -> Void, ended: () -> Void)?
+    /// „Später“: an Ort und Stelle zum Planer wechseln.
+    let onPlan: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -474,6 +516,7 @@ private struct SessionListView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.white.opacity(0.06)))
+                PlanPromptButton(action: onPlan)
                 Spacer(minLength: 4)
                 if showsMascot {
                     Mascot(mood: model.isWorking ? .working : .idle, size: 13)
@@ -530,6 +573,35 @@ private struct SessionListView: View {
                     .frame(height: Layout.usageBlockHeight(Preferences.shared) - 7)
             }
         }
+    }
+}
+
+/// „Später“ in der Kopfzeile: öffnet das Fenster „Prompt planen“. Ist etwas geplant, steht die Zahl daneben.
+private struct PlanPromptButton: View {
+    let action: () -> Void
+    @ObservedObject private var scheduler = ScheduledPrompts.shared
+    @ObservedObject private var followUps = FollowUps.shared
+    @ObservedObject private var prefs = Preferences.shared
+
+    var body: some View {
+        let count = prefs.followUpsEnabled ? scheduler.jobs.count + followUps.planned.count : 0
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: count > 0 ? "clock.fill" : "clock")
+                    .font(.system(size: 9.5, weight: .semibold))
+                Text(count > 0 ? "Später · \(count)" : "Später")
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(count > 0 ? Theme.orange : Theme.muted)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.white.opacity(0.08)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressStyle(scale: 0.92))
+        .help("Prompt für später planen: nach dem Limit-Reset oder zu einer Uhrzeit, in einem neuen oder alten Chat")
+        .accessibilityLabel(count > 0 ? "Prompt planen, \(count) geplant" : "Prompt für später planen")
     }
 }
 

@@ -55,6 +55,8 @@ final class NotchController {
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var cancellables: Set<AnyCancellable> = []
+    /// Beobachter je Fenster, werden bei jedem Neuaufbau ersetzt.
+    private var panelObservers: Set<AnyCancellable> = []
     private var lastLayoutKey = ""
 
     init(model: NotchModel, prefs: Preferences) {
@@ -111,6 +113,7 @@ final class NotchController {
         lastLayoutKey = layoutKey()
         for e in entries { e.panel.orderOut(nil) }
         entries.removeAll()
+        panelObservers.removeAll()
 
         for screen in targetScreens() {
             let geometry = ScreenGeometry.make(for: screen, placement: prefs.placementWithoutNotch, mode: prefs.displayMode)
@@ -137,6 +140,16 @@ final class NotchController {
             let index = entries.count
             state.onDragMoved = { [weak self] in self?.dragMoved(index) }
             state.onDragEnded = { [weak self] in self?.dragEnded(index) }
+            // Planer zu: Tastatur an die App zurückgeben, in der du vorher warst. Sonst landen Tastendrücke
+            // im (dann unsichtbaren) Eingabefeld des Notch.
+            state.$planning
+                .removeDuplicates()
+                .dropFirst()
+                .filter { !$0 }
+                .sink { [weak panel] _ in
+                    DispatchQueue.main.async { Self.releaseKeyboard(panel) }
+                }
+                .store(in: &panelObservers)
             entries.append(Entry(panel: panel, state: state, screen: screen, floatingCenter: center))
         }
     }
@@ -167,6 +180,23 @@ final class NotchController {
         guard !entries.isEmpty else { return }
         entries[0].holdOpenUntil = Date().addingTimeInterval(8)
         withAnimation(Theme.spring) { entries[0].state.pinned = true }
+    }
+
+    /// „Prompt planen …“ aus dem Menü: Planer im Notch öffnen, auf dem Bildschirm mit der Maus.
+    func showPlanner() {
+        guard !entries.isEmpty else { return }
+        let mouse = NSEvent.mouseLocation
+        let i = entries.firstIndex { $0.screen.frame.contains(mouse) } ?? 0
+        withAnimation(Theme.spring) { entries[i].state.planning = true }
+    }
+
+    private static func releaseKeyboard(_ panel: NSPanel?) {
+        guard let panel, panel.isKeyWindow else { return }
+        panel.makeFirstResponder(nil)
+        // Das Panel aktiviert die App nicht: vorn ist noch die App, in der du vorher warst.
+        if let app = NSWorkspace.shared.frontmostApplication, app != NSRunningApplication.current {
+            app.activate(options: [])
+        }
     }
 
     // MARK: - Reiter verschieben
@@ -234,6 +264,15 @@ final class NotchController {
                 if e.state.hovering, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 0.45 {
                     e.state.hovering = false
                 }
+                // Planer: bleibt offen, solange du darin tippst. Hast du woanders hingeklickt (das Feld hat
+                // keinen Fokus mehr) und ist die Maus eine Weile weg, klappt er zu. Der Entwurf bleibt.
+                if e.state.planning, !e.panel.isKeyWindow, let since = entries[i].outsideSince,
+                   now.timeIntervalSince(since) > 20 {
+                    withAnimation(Theme.spring) {
+                        e.state.planning = false
+                        e.state.pinned = false
+                    }
+                }
                 // Per Klick geöffnete Liste schließt sich, wenn die Maus eine Weile weg ist.
                 if e.state.pinned, let since = entries[i].outsideSince, now.timeIntervalSince(since) > 1.5,
                    (e.holdOpenUntil ?? .distantPast) < now {
@@ -246,7 +285,7 @@ final class NotchController {
     private func interactiveRect(for e: Entry) -> NSRect {
         let g = e.state.geometry
         let p = Layout.presentation(model: model, prefs: prefs, geometry: g,
-                                    hovering: e.state.hovering, pinned: e.state.pinned)
+                                    hovering: e.state.hovering, pinned: e.state.pinned, planning: e.state.planning)
         var size = Layout.size(for: p, model: model, prefs: prefs, geometry: g)
         // Im Ruhezustand reicht der Notch selbst als Fläche zum Überfahren.
         if size == .zero, !g.isTile { size = g.notchSize }

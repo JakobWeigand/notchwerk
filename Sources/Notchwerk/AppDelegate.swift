@@ -232,9 +232,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             awake.isEnabled = false
             menu.addItem(awake)
         }
-        let planned = FollowUps.shared.planned.count
+        let planned = FollowUps.shared.planned.count + ScheduledPrompts.shared.jobs.count
         if prefs.followUpsEnabled && planned > 0 {
-            let line = NSMenuItem(title: "\(planned) geplante Nachricht\(planned == 1 ? "" : "en") an Claude",
+            let line = NSMenuItem(title: "\(planned) geplante\(planned == 1 ? "r" : "") Prompt\(planned == 1 ? "" : "s") an Claude",
                                   action: nil, keyEquivalent: "")
             line.isEnabled = false
             menu.addItem(line)
@@ -264,6 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(mi)
         }
         menu.addItem(.separator())
+        menu.addItem(item("Prompt planen …", #selector(openPlanner)))
         menu.addItem(item("Einstellungen …", #selector(openSettings), key: ","))
         menu.addItem(toggle("Anzeige pausieren", !prefs.enabled, #selector(togglePause)))
         let awakeItem = NSMenuItem(title: "Mac wach halten", action: nil, keyEquivalent: "")
@@ -276,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         awakeItem.submenu = awakeMenu
         menu.addItem(awakeItem)
         if prefs.followUpsEnabled && planned > 0 {
-            menu.addItem(item("Geplante Nachrichten löschen", #selector(cancelFollowUps)))
+            menu.addItem(item("Geplante Prompts löschen", #selector(cancelFollowUps)))
         }
         menu.addItem(.separator())
 
@@ -406,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func noop() {}
     @objc private func openSettings() { SettingsWindowController.shared.show() }
+    @objc private func openPlanner() { controller?.showPlanner() }
     @objc private func togglePause() { prefs.enabled.toggle() }
     @objc private func playDemo() { model.runDemo() }
     @objc private func toggleRim() { prefs.alwaysShowRim.toggle() }
@@ -440,7 +442,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func runUpdate() { Updater.shared.update() }
-    @objc private func cancelFollowUps() { FollowUps.shared.cancelAll() }
+    @objc private func cancelFollowUps() {
+        FollowUps.shared.cancelAll()
+        ScheduledPrompts.shared.cancelAll()
+    }
 
     @objc private func chooseKeepAwake(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let mode = Preferences.KeepAwake(rawValue: raw) {

@@ -128,10 +128,12 @@ enum Presentation: Equatable {
     case request(UUID)
     case banner(UUID)
     case sessions
+    /// „Später“: Prompt für später planen, an Stelle der Liste.
+    case planner
 
     var isExpanded: Bool {
         switch self {
-        case .request, .banner, .sessions: return true
+        case .request, .banner, .sessions, .planner: return true
         default: return false
         }
     }
@@ -159,6 +161,11 @@ enum Layout {
         g.isTile ? prefs.listSize.width : max(g.notchSize.width + 2 * wing, prefs.listSize.width + 50)
     }
 
+    /// Der Planer braucht etwas mehr Breite als die kleinste Liste.
+    static func plannerWidth(prefs: Preferences, geometry g: ScreenGeometry) -> CGFloat {
+        max(expandedWidth(prefs: prefs, geometry: g), 440)
+    }
+
     /// Wie viele Nutzungsringe nebeneinander passen.
     static func maxGauges(prefs: Preferences, geometry g: ScreenGeometry) -> Int {
         max(2, Int((expandedWidth(prefs: prefs, geometry: g) - 40) / 140))
@@ -178,9 +185,12 @@ enum Layout {
     }
 
     static func presentation(model: NotchModel, prefs: Preferences, geometry g: ScreenGeometry,
-                             hovering: Bool, pinned: Bool) -> Presentation {
+                             hovering: Bool, pinned: Bool, planning: Bool) -> Presentation {
         guard prefs.enabled else { return .hidden }
         if let req = model.currentRequest { return .request(req.id) }
+        // Der Planer bleibt offen, auch ohne Maus: Beim Tippen ist sie oft woanders.
+        // Eine Freigabe geht vor, danach ist der Planer mit dem Entwurf wieder da.
+        if planning { return .planner }
         if let banner = model.banner { return .banner(banner.id) }
         if pinned { return .sessions }
         if hovering && prefs.expandOnHover { return .sessions }
@@ -227,6 +237,11 @@ enum Layout {
             // Oben rechts und als Reiter hat die Liste keine eigene Kopfzeile, sie beginnt gleich mit „Claude“.
             let head: CGFloat = tile ? 10 : top + 6
             return CGSize(width: expandedWidth, height: head + listHeader + 4 + body + footer + usage + 12)
+        case .planner:
+            let head: CGFloat = tile ? 10 : top + 6
+            return CGSize(width: plannerWidth(prefs: prefs, geometry: g),
+                          height: head + PlannerLayout.height(accounts: prefs.accounts.count,
+                                                              planned: PlannerLayout.plannedCount(prefs)) + 12)
         case .request:
             let req = model.currentRequest
             return CGSize(width: expandedWidth,

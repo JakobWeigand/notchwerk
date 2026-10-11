@@ -222,6 +222,7 @@ final class Updater: ObservableObject {
     private static var isQuiet: Bool {
         let model = NotchModel.shared
         return !model.isWorking && !model.needsAttention && model.pending.isEmpty && !FollowUps.shared.hasScheduled
+            && !ScheduledPrompts.shared.hasScheduled
     }
 
     private static func clock(_ date: Date) -> String {
