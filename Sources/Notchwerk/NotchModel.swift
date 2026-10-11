@@ -164,6 +164,9 @@ final class NotchModel: ObservableObject {
     private var titleRunning: Set<String> = []
     private var titleTimes: [String: Date] = [:]
     private var watchdog: Task<Void, Never>?
+    /// Limit-Hinweise, die du mit „Verstanden“ weggeklickt hast: pro Konto, bis wann sie ruhig bleiben.
+    /// Claude Code meldet ein Limit oft mehrmals (Wiederholungen, Subagents, mehrere Sitzungen).
+    private var limitAcknowledged: [String: Date] = [:]
     private var cancellables: Set<AnyCancellable> = []
     private let prefs = Preferences.shared
 
@@ -355,6 +358,7 @@ final class NotchModel: ObservableObject {
                 session.state = .working
                 session.detail = "Limit zurückgesetzt, macht weiter"
                 sessions[sessionId] = session
+                limitAcknowledged[Self.limitKey(session)] = nil
                 clearNotices(for: sessionId)
                 showBanner(Banner(style: .info, title: "Limit zurückgesetzt", subtitle: "\(session.displayName) macht weiter"),
                            duration: 4)
@@ -383,6 +387,8 @@ final class NotchModel: ObservableObject {
 
         case "Stop":
             session.limitSince = nil
+            // Normal fertig geworden, das Limit ist also vorbei. Ein neues darf wieder auftauchen.
+            limitAcknowledged[Self.limitKey(session)] = nil
             clearNotices(for: sessionId)
             // Geplante Nachricht (erweitert): Claude macht gleich damit weiter.
             if let text = FollowUps.shared.take(for: sessionId) {
@@ -673,7 +679,19 @@ final class NotchModel: ObservableObject {
         request.respond(answer)
         remove(id)
         switch request.kind {
-        case .compose, .limit:
+        case .limit:
+            // Weggeklickt: bis zum Zurücksetzen nicht noch einmal zeigen.
+            if let session = sessions[request.sessionId] {
+                let key = Self.limitKey(session)
+                limitAcknowledged[key] = limitReset(for: session) ?? Date().addingTimeInterval(Self.limitWaitMax)
+                for req in pending where req.sessionId != session.id {
+                    if case .limit = req.kind, let other = sessions[req.sessionId], Self.limitKey(other) == key {
+                        remove(req.id)
+                    }
+                }
+            }
+            return // nur bei uns, Claude Code wartet nicht darauf
+        case .compose:
             return // nur bei uns, Claude Code wartet nicht darauf
         case .finished:
             guard var session = sessions[request.sessionId] else { return }
@@ -729,6 +747,16 @@ final class NotchModel: ObservableObject {
     /// Hinweis im Notch: Limit erreicht, und wann es sich zurücksetzt, falls die Nutzung bekannt ist.
     private func enqueueLimitNotice(_ session: SessionInfo) {
         guard prefs.enabled else { return }
+        let key = Self.limitKey(session)
+        if let until = limitAcknowledged[key] {
+            if until > Date() { return }
+            limitAcknowledged[key] = nil
+        }
+        // Für dieses Konto steht schon ein Limit-Hinweis da: nicht neu einblenden und nicht noch mal piepen.
+        if pending.contains(where: { req in
+            guard case .limit = req.kind else { return false }
+            return req.sessionId == session.id || sessions[req.sessionId].map { Self.limitKey($0) == key } ?? false
+        }) { return }
         var message = "Claude Code macht nach dem Zurücksetzen von selbst weiter"
         if let reset = limitReset(for: session) {
             let f = DateFormatter()
@@ -738,14 +766,15 @@ final class NotchModel: ObservableObject {
         }
         message += "."
         if prefs.keepAwake == .off { message += " Damit das klappt, darf der Mac nicht schlafen." }
-        pending.removeAll { req in
-            if case .limit = req.kind { return req.sessionId == session.id }
-            return false
-        }
         let request = PendingRequest(sessionId: session.id, project: session.displayName,
                                      kind: .limit(message: message)) { _ in }
         pending.append(request)
         Sounds.play(.attention)
+    }
+
+    /// Limits gelten pro Konto. Ohne bekanntes Konto zählt die Sitzung für sich.
+    private static func limitKey(_ session: SessionInfo) -> String {
+        session.accountID ?? "session:\(session.id)"
     }
 
     /// Zeitpunkt, zu dem sich ein ausgeschöpftes Limit des Kontos zurücksetzt (nur mit Nutzungsanzeige bekannt).
