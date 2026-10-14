@@ -10,6 +10,39 @@ Notchwerk ist eine kleine, kostenlose Mac App für die Menüleiste. Sie zeigt di
 
 > Inoffizielles Hobbyprojekt. Nicht von Anthropic und nicht mit Anthropic verbunden. „Claude“ und „Claude Code“ sind Marken von Anthropic, PBC und werden hier nur beschreibend genannt, weil die App mit Claude Code zusammenarbeitet. Lizenz: MIT, ohne Gewähr (siehe `LICENSE`).
 
+## Einrichten in 3 Minuten
+
+**Das brauchst du:** einen Mac mit macOS 13 oder neuer und Claude Code (im Terminal, in VS Code oder im Code-Tab der Claude App). Notchwerk kostet nichts, braucht kein eigenes Konto und hat keine Telemetrie.
+
+**Weg A: fertige App herunterladen (am schnellsten)**
+
+1. Auf der Seite [Releases](https://github.com/JakobWeigand/notchwerk/releases/latest) die Datei **`Notchwerk.zip`** laden.
+2. Terminal öffnen und diese Zeile einfügen. Sie entpackt die App, legt sie nach „Programme“ und hebt die macOS-Sperre nur für diese eine App auf (sie ist nicht von Apple notarisiert, siehe [Was die App auf deinem Mac verändert](#was-die-app-auf-deinem-mac-verändert)):
+   ```bash
+   cd ~/Downloads && { [ -d "Notchwerk.app" ] || ditto -x -k Notchwerk.zip .; } && rm -rf "/Applications/Notchwerk.app" && mv "Notchwerk.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Notchwerk.app" && open "/Applications/Notchwerk.app"
+   ```
+3. Im Fenster „Mit Claude Code verbinden?“ auf **Verbinden** klicken.
+4. Laufende Claude Code Sitzungen einmal beenden und neu starten. Ab dann meldet sich Claude am Notch.
+
+**Weg B: selbst aus dem Quellcode bauen** (neueste Funktionen, keine macOS-Warnung)
+
+```bash
+xcode-select --install        # einmalig, kostenlose Entwicklerwerkzeuge von Apple
+git clone https://github.com/JakobWeigand/notchwerk.git
+cd notchwerk
+./scripts/install.sh
+```
+
+Danach genauso **Verbinden** klicken und Claude Code Sitzungen neu starten.
+
+> Der Download (Release 0.7.2) enthält noch nicht den **Chat mit Kontowechsel**, das **Planen von Prompts** und das **Start-Skript für Editoren**. Diese Funktionen gibt es mit Weg B.
+
+**Ausprobieren:** Das Maskottchen in der Menüleiste anklicken und **Demo abspielen** wählen. Das zeigt alle Animationen, ohne dass Claude laufen muss.
+
+**Wieder entfernen:** Menü → **Verbindung entfernen**, die App in den Papierkorb ziehen, oder bei Weg B `./scripts/uninstall.sh`.
+
+**Hilfe, Fehler, Ideen:** [Issue auf GitHub](https://github.com/JakobWeigand/notchwerk/issues) anlegen.
+
 ## Über dieses Projekt
 
 Notchwerk ist ein privates Hobbyprojekt von Jakob Weigand. Es ist kostenlos, verfolgt kein kommerzielles Interesse und wird in der Freizeit gepflegt, ohne Zusage, wie schnell Fehler behoben werden. Fragen, Fehler und Ideen bitte als [Issue auf GitHub](https://github.com/JakobWeigand/notchwerk/issues). Wer die App weiterentwickeln möchte, forkt das Repo einfach (MIT-Lizenz) oder schickt einen Pull Request.
@@ -136,7 +169,7 @@ Ein Klick auf ein Widget klappt die Liste auf. Die Widgets laufen in einer Sandb
    ```
 2. Terminal öffnen und diese eine Zeile einfügen
    ```bash
-   cd ~/Downloads && { [ -d "Notchwerk.app" ] || ditto -x -k Notchwerk.zip .; } && rm -rf "/Applications/Notchwerk.app" "/Applications/Notchwerk.app" && mv "Notchwerk.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Notchwerk.app" && open "/Applications/Notchwerk.app"
+   cd ~/Downloads && { [ -d "Notchwerk.app" ] || ditto -x -k Notchwerk.zip .; } && rm -rf "/Applications/Notchwerk.app" && mv "Notchwerk.app" /Applications/ && xattr -dr com.apple.quarantine "/Applications/Notchwerk.app" && open "/Applications/Notchwerk.app"
    ```
 3. Im Fenster „Mit Claude Code verbinden?“ auf **Verbinden** klicken.
 
